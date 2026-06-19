@@ -362,7 +362,7 @@ class InventoryApp {
         try {
             const video = document.getElementById('scanner-preview');
             const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
             video.style.display = 'block';
 
@@ -407,18 +407,23 @@ class InventoryApp {
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
                     // Get image data and decode QR code
-                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                        inversionAttempts: 'dontInvert'
-                    });
+                    if (typeof jsQR === 'function') {
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                            inversionAttempts: 'dontInvert'
+                        });
 
-                    if (code) {
-                        console.log('QR code scanned:', code.data);
-                        this.handleBarcodeScan(code.data);
-                        // Don't stop scanning, allow multiple scans
+                        if (code) {
+                            console.log('QR code scanned:', code.data);
+                            this.handleBarcodeScan(code.data);
+                            // Don't stop scanning, allow multiple scans
+                        }
+                    } else {
+                        console.warn('jsQR not available yet, waiting for library to load...');
                     }
                 } catch (frameError) {
                     // Silently continue scanning if frame processing fails
+                    // console.log('Frame scan error:', frameError);
                 }
 
                 if (this.isScanning) {
