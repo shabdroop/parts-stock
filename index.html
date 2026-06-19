@@ -459,7 +459,6 @@
 
                 <div class="scan-controls">
                     <button class="btn-primary" onclick="app.startScanning()">Start Camera</button>
-                    <button class="btn-success" id="capture-btn" onclick="app.captureAndScan()" style="display: none;">📸 Capture & Scan</button>
                     <button class="btn-danger" onclick="app.stopScanning()">Stop Camera</button>
                 </div>
 
@@ -535,11 +534,16 @@
 
                 <div style="margin-bottom: 16px;">
                     <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #2c3e50;">
-                        Option A: Auto-Fetch from Server (Recommended)
+                        Option A: Fetch from Cloud Server (Recommended)
                     </div>
                     <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 8px;">
-                        If admin has uploaded CSV to server, fetch it automatically
+                        Steps:<br>
+                        1️⃣ Upload CSV to admin server (click link below)<br>
+                        2️⃣ Click "Fetch from Admin Server" button
                     </p>
+                    <button class="btn-secondary" style="width: 100%; margin-bottom: 8px;" onclick="window.open('https://web-production-85db8e.up.railway.app', '_blank')">
+                        🔧 Open Admin Server
+                    </button>
                     <button class="btn-success" style="width: 100%;" onclick="app.fetchCSVFromServer('https://web-production-85db8e.up.railway.app')">
                         🔄 Fetch from Admin Server
                     </button>

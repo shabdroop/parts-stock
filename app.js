@@ -131,7 +131,7 @@ class InventoryApp {
             });
         } catch (error) {
             console.error('Fetch Error:', error);
-            this.showAlert(`✗ Error: ${error.message}\n\nMake sure:\n1. Admin server running (port 5000)\n2. CSV uploaded to admin panel\n3. Both on same WiFi`, 'error');
+            this.showAlert(`✗ Error: ${error.message}\n\nTo use admin server:\n1. Go to: https://web-production-85db8e.up.railway.app\n2. Upload your CSV file\n3. Then click "Fetch from Admin Server" again\n\nOr use "Manual Entry" option below`, 'error');
         }
     }
 
@@ -181,22 +181,22 @@ class InventoryApp {
             const video = document.getElementById('scanner-preview');
             video.style.display = 'block';
 
-            this.showAlert('📷 Requesting camera access... (check notification)', 'info');
+            this.showAlert('📷 Requesting camera access... Point at barcode', 'info');
 
             this.codeReader = new ZXing.BrowserMultiFormatReader();
 
             console.log('Getting video input devices...');
-            this.videoStream = await this.codeReader.getVideoInputDevices();
+            const devices = await this.codeReader.getVideoInputDevices();
 
-            if (this.videoStream.length === 0) {
+            if (devices.length === 0) {
                 throw new Error('No camera found on device');
             }
 
             // Prefer back camera (environment facing) over front camera
-            let selectedDeviceId = this.videoStream[0].deviceId;
+            let selectedDeviceId = devices[0].deviceId;
 
             // Try to find back camera
-            const backCamera = this.videoStream.find(device =>
+            const backCamera = devices.find(device =>
                 device.label && device.label.toLowerCase().includes('back')
             );
             if (backCamera) {
@@ -206,23 +206,24 @@ class InventoryApp {
                 console.log('Back camera not found, using first available camera:', selectedDeviceId);
             }
 
-            this.showAlert('✓ Camera ready! Click "Capture" to scan barcode...', 'success');
+            this.showAlert('✓ Camera ready! Scanning for barcodes...', 'success');
 
-            // Start video stream but don't auto-decode
-            const constraints = {
-                video: {
-                    deviceId: selectedDeviceId,
-                    facingMode: 'environment'
+            // Use continuous decoding from video device with facingMode preference
+            await this.codeReader.decodeFromVideoDevice(
+                selectedDeviceId,
+                video,
+                (result, err) => {
+                    if (result) {
+                        console.log('Barcode scanned:', result.getText());
+                        this.handleBarcodeScan(result.getText());
+                    }
+                    if (err && !(err instanceof ZXing.NotFoundException)) {
+                        console.error('Scan error:', err);
+                    }
                 }
-            };
+            );
 
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            video.srcObject = stream;
-            this.videoStream = stream;
             this.isScanning = true;
-
-            // Show capture button
-            document.getElementById('capture-btn').style.display = 'inline-block';
 
         } catch (err) {
             console.error('Camera error:', err);
@@ -240,38 +241,6 @@ class InventoryApp {
 
             this.showAlert(errorMsg, 'error');
             video.style.display = 'none';
-        }
-    }
-
-    // Capture photo and decode barcode
-    async captureAndScan() {
-        try {
-            const video = document.getElementById('scanner-preview');
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            // Decode the captured image
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
-            const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
-
-            const codeReader = new ZXing.BrowserMultiFormatReader();
-            const result = codeReader.decodeFromBitmap(binaryBitmap);
-
-            if (result) {
-                console.log('Barcode scanned:', result.getText());
-                this.handleBarcodeScan(result.getText());
-                this.showAlert('✓ Barcode scanned successfully!', 'success');
-            } else {
-                this.showAlert('⚠️ No barcode detected. Try again with better positioning.', 'warning');
-            }
-        } catch (err) {
-            console.error('Scan error:', err);
-            this.showAlert('⚠️ Could not read barcode. Try again or use manual entry.', 'warning');
         }
     }
 
