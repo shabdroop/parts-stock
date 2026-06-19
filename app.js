@@ -200,7 +200,7 @@ class InventoryApp {
             Papa.parse(csvText, {
                 header: true,
                 skipEmptyLines: true,
-                dynamicTyping: false,
+                dynamicTyping: true, // Preserve number formats
                 complete: async (results) => {
                     console.log(`Parsed ${results.data.length} rows from CSV`);
 
@@ -215,14 +215,26 @@ class InventoryApp {
                     );
 
                     console.log(`Found ${validData.length} valid data rows`);
-
-                    await this.saveParts(validData);
                     const validParts = validData.filter(p => p['Part Number'] && p['Part Name']).length;
 
-                    document.getElementById('file-status').textContent = `✓ Fetched from server! Imported ${validParts} parts`;
-                    document.getElementById('file-status').style.display = 'block';
-                    this.updateStats();
-                    this.showAlert(`✓ Parts loaded from admin server (${validParts} items)`, 'success');
+                    this.showAlert(`💾 Saving ${validParts} parts to database... This may take a moment.`, 'info');
+
+                    try {
+                        console.log('Starting database save...');
+                        await this.saveParts(validData);
+
+                        console.log('Database save completed');
+                        document.getElementById('file-status').textContent = `✓ Fetched from server! Imported ${validParts} parts`;
+                        document.getElementById('file-status').style.display = 'block';
+
+                        // Update stats after successful save
+                        await this.updateStats();
+
+                        this.showAlert(`✓ Parts loaded successfully!\n\n${validParts} parts now available for scanning`, 'success');
+                    } catch (saveError) {
+                        console.error('Error saving to database:', saveError);
+                        this.showAlert(`✗ Error saving to database: ${saveError.message}`, 'error');
+                    }
                 },
                 error: (error) => {
                     console.error('CSV Parse Error:', error);
@@ -235,26 +247,79 @@ class InventoryApp {
         }
     }
 
-    // Save parts to database
+    // Save parts to database (optimized for large datasets)
     async saveParts(parts) {
-        return new Promise((resolve) => {
-            const tx = this.db.transaction('parts', 'readwrite');
-            const store = tx.objectStore('parts');
+        console.log(`Starting to save ${parts.length} parts to database...`);
 
-            // Clear existing parts
-            store.clear();
+        return new Promise(async (resolve, reject) => {
+            try {
+                // Clear existing parts first
+                const clearTx = this.db.transaction('parts', 'readwrite');
+                const clearStore = clearTx.objectStore('parts');
+                const clearRequest = clearStore.clear();
 
-            parts.forEach((part) => {
-                if (part['Part Number'] && part['Part Name']) {
-                    this.partsDatabase[part['Part Number']] = part['Part Name'];
-                    store.add({
-                        partNumber: part['Part Number'].trim(),
-                        partName: part['Part Name'].trim()
-                    });
-                }
-            });
+                clearRequest.onerror = () => {
+                    console.error('Error clearing database:', clearRequest.error);
+                    reject(clearRequest.error);
+                };
 
-            tx.oncomplete = () => resolve();
+                clearRequest.onsuccess = () => {
+                    console.log('Database cleared');
+
+                    // Process parts in batches to avoid transaction timeouts
+                    const batchSize = 500;
+                    let currentBatch = 0;
+
+                    const processBatch = () => {
+                        const start = currentBatch * batchSize;
+                        const end = Math.min(start + batchSize, parts.length);
+                        const batch = parts.slice(start, end);
+
+                        if (batch.length === 0) {
+                            console.log('All parts saved successfully');
+                            resolve();
+                            return;
+                        }
+
+                        const tx = this.db.transaction('parts', 'readwrite');
+                        const store = tx.objectStore('parts');
+
+                        batch.forEach((part) => {
+                            if (part['Part Number'] && part['Part Name']) {
+                                const partNumber = String(part['Part Number']).trim();
+                                const partName = String(part['Part Name']).trim();
+
+                                this.partsDatabase[partNumber] = partName;
+
+                                try {
+                                    store.add({
+                                        partNumber: partNumber,
+                                        partName: partName
+                                    });
+                                } catch (e) {
+                                    console.warn(`Error adding part ${partNumber}:`, e);
+                                }
+                            }
+                        });
+
+                        tx.onerror = () => {
+                            console.error(`Error in batch ${currentBatch}:`, tx.error);
+                            reject(tx.error);
+                        };
+
+                        tx.oncomplete = () => {
+                            console.log(`Batch ${currentBatch} completed (${end}/${parts.length} parts)`);
+                            currentBatch++;
+                            processBatch();
+                        };
+                    };
+
+                    processBatch();
+                };
+            } catch (error) {
+                console.error('Error in saveParts:', error);
+                reject(error);
+            }
         });
     }
 
