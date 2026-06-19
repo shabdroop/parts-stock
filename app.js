@@ -453,44 +453,70 @@ class InventoryApp {
             justify-content: center; z-index: 10000;
         `;
 
+        const closeModal = () => {
+            modal.remove();
+        };
+
+        const handleUseCode = () => {
+            const codeInput = document.getElementById('captured-barcode');
+            const code = codeInput.value.trim();
+
+            if (!code) {
+                alert('⚠️ Please enter a barcode or QR code');
+                codeInput.focus();
+                return;
+            }
+
+            console.log('Using code:', code);
+            this.handleBarcodeScan(code);
+            closeModal();
+        };
+
+        const handleRetake = () => {
+            console.log('Retaking photo...');
+            closeModal();
+            // Optionally restart camera
+            // this.startScanning();
+        };
+
         modal.innerHTML = `
             <div style="background: white; padding: 20px; border-radius: 10px; max-width: 90%; text-align: center;">
                 <h2>Captured Photo</h2>
                 <img src="${imageData}" style="width: 100%; max-width: 500px; border-radius: 8px; margin: 15px 0;">
                 <p style="font-size: 14px; color: #666;">
-                    Barcode/QR detected? Enter the code below or click Close
+                    📍 Enter the barcode or QR code number from the image
                 </p>
                 <div style="display: flex; gap: 10px; margin: 15px 0;">
-                    <input type="text" placeholder="Enter barcode/QR code" id="captured-barcode"
-                           style="flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px;">
-                    <button onclick="document.getElementById('barcode-modal').querySelector('button:nth-child(4)').click()"
-                            style="padding: 10px 20px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                        ✓ Use
-                    </button>
+                    <input type="text" placeholder="e.g., 123456789" id="captured-barcode"
+                           style="flex: 1; padding: 12px; border: 2px solid #3498db; border-radius: 5px; font-size: 16px;">
                 </div>
                 <div style="display: flex; gap: 10px;">
-                    <button onclick="this.closest('div').parentElement.remove()"
-                            style="flex: 1; padding: 10px; background: #95a5a6; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                        Retake
+                    <button id="retake-btn" style="flex: 1; padding: 12px; background: #95a5a6; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">
+                        🔄 Retake
                     </button>
-                    <button onclick="
-                        const code = document.getElementById('captured-barcode').value;
-                        if (code.trim()) {
-                            app.handleBarcodeScan(code.trim());
-                            this.closest('div').parentElement.remove();
-                        } else {
-                            alert('Please enter barcode code');
-                        }
-                    " style="flex: 1; padding: 10px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                        Use Code
+                    <button id="use-code-btn" style="flex: 1; padding: 12px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">
+                        ✓ Use Code
                     </button>
                 </div>
             </div>
         `;
+
         modal.id = 'barcode-modal';
         document.body.appendChild(modal);
 
-        document.getElementById('captured-barcode').focus();
+        // Attach event listeners
+        document.getElementById('retake-btn').addEventListener('click', () => handleRetake());
+        document.getElementById('use-code-btn').addEventListener('click', () => handleUseCode());
+        document.getElementById('captured-barcode').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleUseCode();
+        });
+
+        // Focus on input
+        setTimeout(() => {
+            document.getElementById('captured-barcode').focus();
+        }, 100);
+
+        console.log('Image preview modal created');
     }
 
     // Handle file upload from phone
