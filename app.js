@@ -197,48 +197,65 @@ class InventoryApp {
                 throw new Error('CSV file is empty. Please upload a valid file to admin server.');
             }
 
+            console.log('Starting Papa.parse...');
+            const self = this; // Store reference to this for use in callback
+
             Papa.parse(csvText, {
                 header: true,
                 skipEmptyLines: true,
                 dynamicTyping: true, // Preserve number formats
                 complete: async (results) => {
-                    console.log(`Parsed ${results.data.length} rows from CSV`);
-
-                    if (!results.data || results.data.length === 0) {
-                        this.showAlert('CSV has no data rows', 'error');
-                        return;
-                    }
-
-                    // Filter out completely empty rows
-                    const validData = results.data.filter(row =>
-                        row['Part Number'] || row['Part Name'] || Object.values(row).some(v => v)
-                    );
-
-                    console.log(`Found ${validData.length} valid data rows`);
-                    const validParts = validData.filter(p => p['Part Number'] && p['Part Name']).length;
-
-                    this.showAlert(`💾 Saving ${validParts} parts to database... This may take a moment.`, 'info');
-
                     try {
+                        console.log(`Parsed ${results.data.length} rows from CSV`);
+                        console.log('First few rows:', results.data.slice(0, 2));
+
+                        if (!results.data || results.data.length === 0) {
+                            self.showAlert('CSV has no data rows', 'error');
+                            return;
+                        }
+
+                        // Filter out completely empty rows
+                        console.log('Filtering data rows...');
+                        const validData = results.data.filter(row =>
+                            row['Part Number'] || row['Part Name'] || Object.values(row).some(v => v)
+                        );
+
+                        console.log(`Found ${validData.length} valid data rows`);
+                        console.log('Filtering parts with both Part Number and Part Name...');
+                        const validParts = validData.filter(p => p['Part Number'] && p['Part Name']).length;
+                        console.log(`Total valid parts (with both fields): ${validParts}`);
+
+                        if (validParts === 0) {
+                            self.showAlert('No valid parts found. Make sure all rows have both "Part Number" and "Part Name"', 'error');
+                            return;
+                        }
+
+                        console.log('Showing save alert...');
+                        self.showAlert(`💾 Saving ${validParts} parts to database... This may take a moment.`, 'info');
+
                         console.log('Starting database save...');
-                        await this.saveParts(validData);
+                        console.log('saveParts is a function:', typeof self.saveParts === 'function');
+
+                        await self.saveParts(validData);
 
                         console.log('Database save completed');
                         document.getElementById('file-status').textContent = `✓ Fetched from server! Imported ${validParts} parts`;
                         document.getElementById('file-status').style.display = 'block';
 
                         // Update stats after successful save
-                        await this.updateStats();
+                        console.log('Updating stats...');
+                        await self.updateStats();
 
-                        this.showAlert(`✓ Parts loaded successfully!\n\n${validParts} parts now available for scanning`, 'success');
-                    } catch (saveError) {
-                        console.error('Error saving to database:', saveError);
-                        this.showAlert(`✗ Error saving to database: ${saveError.message}`, 'error');
+                        self.showAlert(`✓ Parts loaded successfully!\n\n${validParts} parts now available for scanning`, 'success');
+                    } catch (completeError) {
+                        console.error('Error in parse complete callback:', completeError);
+                        console.error('Error stack:', completeError.stack);
+                        self.showAlert(`✗ Unexpected error: ${completeError.message}`, 'error');
                     }
                 },
                 error: (error) => {
                     console.error('CSV Parse Error:', error);
-                    this.showAlert('Error parsing CSV: ' + error.message + '\n\nMake sure the file has "Part Number" and "Part Name" columns', 'error');
+                    self.showAlert('Error parsing CSV: ' + error.message + '\n\nMake sure the file has "Part Number" and "Part Name" columns', 'error');
                 }
             });
         } catch (error) {
