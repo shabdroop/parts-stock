@@ -459,10 +459,11 @@
 
                 <div class="scan-controls">
                     <button class="btn-primary" onclick="app.startScanning()">Start Camera</button>
+                    <button class="btn-success" id="capture-btn" onclick="app.captureAndScan()" style="display: none;">📸 Capture & Scan</button>
                     <button class="btn-danger" onclick="app.stopScanning()">Stop Camera</button>
                 </div>
 
-                <video id="scanner-preview" style="display: none; margin-bottom: 16px;"></video>
+                <video id="scanner-preview" style="display: none; margin-bottom: 16px; width: 100%; max-height: 400px;"></video>
                 <canvas id="canvas" style="display: none;"></canvas>
 
                 <div id="scan-result" style="display: none;"></div>

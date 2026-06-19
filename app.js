@@ -192,30 +192,41 @@ class InventoryApp {
                 throw new Error('No camera found on device');
             }
 
-            const selectedDeviceId = this.videoStream[0].deviceId;
-            console.log('Using device:', selectedDeviceId);
+            // Prefer back camera (environment facing) over front camera
+            let selectedDeviceId = this.videoStream[0].deviceId;
 
-            this.showAlert('✓ Camera access granted! Point at barcode...', 'success');
-
-            await this.codeReader.decodeFromVideoDevice(
-                selectedDeviceId,
-                video,
-                (result, err) => {
-                    if (result) {
-                        console.log('Barcode scanned:', result.getText());
-                        this.handleBarcodeScan(result.getText());
-                    }
-                    if (err && !(err instanceof ZXing.NotFoundException)) {
-                        console.error('Scan error:', err);
-                    }
-                }
+            // Try to find back camera
+            const backCamera = this.videoStream.find(device =>
+                device.label && device.label.toLowerCase().includes('back')
             );
+            if (backCamera) {
+                selectedDeviceId = backCamera.deviceId;
+                console.log('Using back camera:', selectedDeviceId);
+            } else {
+                console.log('Back camera not found, using first available camera:', selectedDeviceId);
+            }
 
+            this.showAlert('✓ Camera ready! Click "Capture" to scan barcode...', 'success');
+
+            // Start video stream but don't auto-decode
+            const constraints = {
+                video: {
+                    deviceId: selectedDeviceId,
+                    facingMode: 'environment'
+                }
+            };
+
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = stream;
+            this.videoStream = stream;
             this.isScanning = true;
+
+            // Show capture button
+            document.getElementById('capture-btn').style.display = 'inline-block';
+
         } catch (err) {
             console.error('Camera error:', err);
 
-            // Provide helpful error message based on error type
             let errorMsg = '';
             if (err.message.includes('enumerate')) {
                 errorMsg = '❌ Camera enumeration failed\n\nUse manual entry instead:\n1. Scroll down\n2. Enter part number manually\n3. Click "Lookup Part"';
@@ -229,6 +240,38 @@ class InventoryApp {
 
             this.showAlert(errorMsg, 'error');
             video.style.display = 'none';
+        }
+    }
+
+    // Capture photo and decode barcode
+    async captureAndScan() {
+        try {
+            const video = document.getElementById('scanner-preview');
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Decode the captured image
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+            const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
+
+            const codeReader = new ZXing.BrowserMultiFormatReader();
+            const result = codeReader.decodeFromBitmap(binaryBitmap);
+
+            if (result) {
+                console.log('Barcode scanned:', result.getText());
+                this.handleBarcodeScan(result.getText());
+                this.showAlert('✓ Barcode scanned successfully!', 'success');
+            } else {
+                this.showAlert('⚠️ No barcode detected. Try again with better positioning.', 'warning');
+            }
+        } catch (err) {
+            console.error('Scan error:', err);
+            this.showAlert('⚠️ Could not read barcode. Try again or use manual entry.', 'warning');
         }
     }
 
