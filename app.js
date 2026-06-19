@@ -405,23 +405,41 @@ class InventoryApp {
     async capturePhoto() {
         try {
             const video = document.getElementById('scanner-preview');
+
+            console.log('Video readyState:', video.readyState);
+            console.log('Video width:', video.videoWidth, 'height:', video.videoHeight);
+
+            // Wait for video to have data
+            if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+                this.showAlert('⏳ Camera warming up... Please wait a moment and try again', 'info');
+                return;
+            }
+
+            if (video.videoWidth === 0 || video.videoHeight === 0) {
+                this.showAlert('⏳ Camera not ready yet. Please wait a moment and try again', 'info');
+                return;
+            }
+
             const canvas = document.createElement('canvas');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
 
+            console.log('Canvas size:', canvas.width, 'x', canvas.height);
+
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
             console.log('Photo captured, showing preview...');
 
             // Convert to image and show preview
-            const imageData = canvas.toDataURL('image/png');
+            const imageData = canvas.toDataURL('image/jpeg', 0.9);
 
             // Show preview modal
             this.showImagePreview(imageData);
 
         } catch (err) {
             console.error('Capture error:', err);
+            console.error('Error stack:', err.stack);
             this.showAlert('❌ Error capturing photo: ' + err.message, 'error');
         }
     }
