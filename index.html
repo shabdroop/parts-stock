@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2c3e50">
+    <title>Inventory Check</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 0;
+            color: #333;
+        }
+
+        .container {
+            max-width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 16px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        header h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        header .status {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .tabs {
+            display: flex;
+            background: white;
+            border-bottom: 2px solid #ecf0f1;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            color: #7f8c8d;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab-btn.active {
+            color: #2c3e50;
+            border-bottom-color: #3498db;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 16px;
+            animation: fadeIn 0.3s;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Scan Tab */
+        #scanner-preview {
+            width: 100%;
+            max-height: 400px;
+            background: #000;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .scan-controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:active {
+            background: #2980b9;
+            transform: scale(0.98);
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:active {
+            background: #c0392b;
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-success:active {
+            background: #229954;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .btn-secondary:active {
+            background: #7f8c8d;
+        }
+
+        .form-group {
+            margin-bottom: 14px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #2c3e50;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #bdc3c7;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        input:focus,
+        select:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .scan-result {
+            background: #ecf0f1;
+            padding: 14px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            border-left: 4px solid #3498db;
+        }
+
+        .scan-result.success {
+            border-left-color: #27ae60;
+            background: #d5f4e6;
+        }
+
+        .scan-result.error {
+            border-left-color: #e74c3c;
+            background: #fadbd8;
+        }
+
+        /* Table */
+        .records-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            background: white;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .records-table thead {
+            background: #34495e;
+            color: white;
+        }
+
+        .records-table th {
+            padding: 12px 8px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .records-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #ecf0f1;
+            font-size: 13px;
+        }
+
+        .records-table tbody tr:hover {
+            background: #f9f9f9;
+        }
+
+        .records-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .action-btn {
+            padding: 6px 10px;
+            font-size: 12px;
+            margin-right: 4px;
+            margin-bottom: 4px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #d5f4e6;
+            color: #27ae60;
+        }
+
+        /* Setup Tab */
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-input-label {
+            display: block;
+            padding: 12px 16px;
+            background: #3498db;
+            color: white;
+            border-radius: 6px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .file-name {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: #ecf0f1;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #2c3e50;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .stat-card h3 {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .stat-card .number {
+            font-size: 28px;
+            font-weight: 700;
+            color: #2c3e50;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            animation: fadeIn 0.2s;
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: flex-end;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 12px 12px 0 0;
+            width: 100%;
+            max-height: 80vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(100%);
+            }
+            to {
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 12px;
+        }
+
+        .modal-header h2 {
+            font-size: 18px;
+            color: #2c3e50;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #7f8c8d;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+
+        .alert-success {
+            background: #d5f4e6;
+            color: #27ae60;
+            border-left: 4px solid #27ae60;
+        }
+
+        .alert-error {
+            background: #fadbd8;
+            color: #e74c3c;
+            border-left: 4px solid #e74c3c;
+        }
+
+        .alert-info {
+            background: #d6eaf8;
+            color: #2c3e50;
+            border-left: 4px solid #3498db;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #7f8c8d;
+        }
+
+        .empty-state svg {
+            width: 60px;
+            height: 60px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        @media (max-width: 480px) {
+            header h1 {
+                font-size: 20px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .records-table {
+                font-size: 12px;
+            }
+
+            button {
+                min-width: 100px;
+                padding: 10px 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📦 Inventory Check</h1>
+            <div class="status">
+                <span id="sync-status">Offline Mode</span> |
+                <span id="record-count">0 records</span>
+            </div>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('scan')">📷 Scan</button>
+            <button class="tab-btn" onclick="switchTab('records')">📋 Records</button>
+            <button class="tab-btn" onclick="switchTab('setup')">⚙️ Setup</button>
+        </div>
+
+        <!-- Scan Tab -->
+        <div id="scan" class="tab-content active">
+            <!-- Barcode Scanning Section -->
+            <div id="barcode-section">
+                <h3 style="margin-bottom: 12px; color: #2c3e50;">📷 Option 1: Barcode Scanning</h3>
+
+                <div class="scan-controls">
+                    <button class="btn-primary" onclick="app.startScanning()">Start Camera</button>
+                    <button class="btn-danger" onclick="app.stopScanning()">Stop Camera</button>
+                </div>
+
+                <video id="scanner-preview" style="display: none; margin-bottom: 16px;"></video>
+                <canvas id="canvas" style="display: none;"></canvas>
+
+                <div id="scan-result" style="display: none;"></div>
+            </div>
+
+            <!-- Manual Input Section -->
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #ecf0f1;">
+                <h3 style="margin-bottom: 12px; color: #2c3e50;">✏️ Option 2: Manual Entry</h3>
+                <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 12px;">
+                    If camera not available, enter part number manually:
+                </p>
+
+                <div class="form-group">
+                    <label>Part Number *</label>
+                    <input type="text" id="manual-part-number" placeholder="e.g., SKU-001">
+                    <button type="button" class="btn-primary" style="width: 100%; margin-top: 8px;" onclick="app.lookupPart()">
+                        🔍 Lookup Part
+                    </button>
+                </div>
+            </div>
+
+            <!-- Record Form (shown after part is found) -->
+            <form id="scan-form" style="display: none; margin-top: 20px;">
+                <h2 style="margin-bottom: 16px;">Add Inventory Record</h2>
+
+                <div class="form-group">
+                    <label>Part Number</label>
+                    <input type="text" id="part-number" readonly>
+                </div>
+
+                <div class="form-group">
+                    <label>Part Name</label>
+                    <input type="text" id="part-name" readonly>
+                </div>
+
+                <div class="form-group">
+                    <label>Physical Count *</label>
+                    <input type="number" id="physical-count" min="0" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Location (Bay/Rack/Bin) *</label>
+                    <input type="text" id="location" placeholder="e.g., A1-02-03" required>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                    <button type="submit" class="btn-success" style="flex: 1;">Save Record</button>
+                    <button type="button" class="btn-secondary" style="flex: 1;" onclick="app.resetForm()">Clear</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Records Tab -->
+        <div id="records" class="tab-content">
+            <div style="margin-bottom: 16px;">
+                <button class="btn-primary" onclick="app.exportCSV()" style="width: 100%; margin-bottom: 8px;">📥 Export to CSV</button>
+                <button class="btn-secondary" onclick="app.clearAllRecords()" style="width: 100%;">🗑️ Clear All Records</button>
+            </div>
+
+            <div id="records-list"></div>
+        </div>
+
+        <!-- Setup Tab -->
+        <div id="setup" class="tab-content">
+            <h2 style="margin-bottom: 16px;">Setup Inventory System</h2>
+
+            <div class="form-group">
+                <label>Step 1: Import Part Database</label>
+
+                <div style="margin-bottom: 16px;">
+                    <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #2c3e50;">
+                        Option A: Auto-Fetch from Server (Recommended)
+                    </div>
+                    <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 8px;">
+                        If admin has uploaded CSV to server, fetch it automatically
+                    </p>
+                    <button class="btn-success" style="width: 100%;" onclick="app.fetchCSVFromServer('http://192.168.150.103:5000')">
+                        🔄 Fetch from Admin Server
+                    </button>
+                    <p style="font-size: 11px; color: #95a5a6; margin-top: 8px;">
+                        Server: http://192.168.150.103:5000
+                    </p>
+                </div>
+
+                <div style="text-align: center; margin: 16px 0;">
+                    <p style="color: #bdc3c7; font-size: 12px;">OR</p>
+                </div>
+
+                <div>
+                    <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #2c3e50;">
+                        Option B: Upload CSV File
+                    </div>
+                    <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 8px;">
+                        Download your Google Sheet as CSV (File → Download → CSV). Make sure it has columns: "Part Number" and "Part Name"
+                    </p>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="csv-file" accept=".csv" onchange="app.importCSV(event)">
+                        <label class="file-input-label" for="csv-file">Choose CSV File</label>
+                    </div>
+                    <div id="file-status" class="file-name" style="display: none;"></div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <label style="font-size: 13px; font-weight: 600;">Database Status</label>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Parts in Database</h3>
+                        <div class="number" id="parts-count">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Records Saved</h3>
+                        <div class="number" id="records-saved-count">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; padding: 12px; background: #d6eaf8; border-radius: 6px; font-size: 13px; line-height: 1.5;">
+                <strong>📱 Getting Started:</strong><br>
+                1. Export your parts list as CSV from Google Sheets<br>
+                2. Import the CSV file above<br>
+                3. Go to Scan tab and start scanning barcodes<br>
+                4. All data saved locally on this device<br>
+                5. Export completed inventory to CSV anytime
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Record</h2>
+                <button class="close-btn" onclick="app.closeEditModal()">&times;</button>
+            </div>
+            <form id="edit-form">
+                <div class="form-group">
+                    <label>Part Number</label>
+                    <input type="text" id="edit-part-number" readonly>
+                </div>
+
+                <div class="form-group">
+                    <label>Part Name</label>
+                    <input type="text" id="edit-part-name">
+                </div>
+
+                <div class="form-group">
+                    <label>Physical Count</label>
+                    <input type="number" id="edit-physical-count" min="0">
+                </div>
+
+                <div class="form-group">
+                    <label>Location</label>
+                    <input type="text" id="edit-location">
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                    <button type="submit" class="btn-success" style="flex: 1;">Save Changes</button>
+                    <button type="button" class="btn-danger" style="flex: 1;" onclick="app.deleteRecord()">Delete Record</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest/umd/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

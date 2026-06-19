@@ -1,0 +1,101 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                  INVENTORY CHECK - QUICK START GUIDE                       ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+YOUR PC IP ADDRESS:  192.168.150.103
+SERVER PORT:         8000
+FULL URL:            http://192.168.150.103:8000
+
+═════════════════════════════════════════════════════════════════════════════
+
+STEP 1: START SERVER ON PC (Windows Command Prompt)
+───────────────────────────────────────────────────────────────────────────
+cd C:\Users\shabd\Desktop\Shabd_Apps\Parts Stock
+python -m http.server 8000
+
+✓ You should see: "Serving HTTP on 0.0.0.0 port 8000"
+  Keep this window open while testing!
+
+═════════════════════════════════════════════════════════════════════════════
+
+STEP 2: ON ANDROID DEVICE
+───────────────────────────────────────────────────────────────────────────
+1. Connect to same WiFi network as PC
+2. Open any browser (Chrome, Firefox, etc.)
+3. Type in address bar:
+
+   http://192.168.150.103:8000
+
+4. Press Enter and wait 2-3 seconds for page to load
+
+═════════════════════════════════════════════════════════════════════════════
+
+STEP 3: FIRST TIME SETUP (⚙️ Setup Tab)
+───────────────────────────────────────────────────────────────────────────
+1. Tap "Choose CSV File"
+2. Select your parts CSV file
+3. Should show: "✓ Imported X parts"
+
+Need a test CSV? Use:
+C:\Users\shabd\Desktop\Shabd_Apps\Parts Stock\sample_parts.csv
+
+═════════════════════════════════════════════════════════════════════════════
+
+STEP 4: SCAN BARCODES (📷 Scan Tab)
+───────────────────────────────────────────────────────────────────────────
+1. Tap "Start Camera"
+2. Grant camera permission (first time only)
+3. Point at barcode
+4. When detected:
+   - Part Name auto-fills
+   - Enter Physical Count (qty found)
+   - Enter Location (e.g., A1-02-03)
+5. Tap "Save Record"
+6. Repeat for next item
+
+═════════════════════════════════════════════════════════════════════════════
+
+STEP 5: REVIEW & EXPORT (📋 Records Tab)
+───────────────────────────────────────────────────────────────────────────
+1. See all scanned items in table
+2. Edit any record if needed
+3. Tap "📥 Export to CSV" to download
+4. Open in Excel/Google Sheets/send to office
+
+═════════════════════════════════════════════════════════════════════════════
+
+IMPORTANT NOTES
+───────────────────────────────────────────────────────────────────────────
+✓ All data stays LOCAL on the device - no internet needed after setup
+✓ CSV import stores parts in device memory
+✓ Inventory records saved to device storage
+✓ Works completely OFFLINE after first CSV load
+✓ Can test camera/barcode anytime
+
+═════════════════════════════════════════════════════════════════════════════
+
+TROUBLESHOOTING
+───────────────────────────────────────────────────────────────────────────
+Problem: "Cannot connect to 192.168.150.103"
+→ Check both devices on same WiFi
+→ Verify Python server still running
+→ Try pinging: ping 192.168.150.103
+
+Problem: "Camera not working"
+→ Settings → Apps → Browser → Permissions → Camera → Allow
+→ Close and reopen browser
+→ Try different browser
+
+Problem: "CSV won't import"
+→ Make sure columns are: "Part Number" and "Part Name" (exact)
+→ Test with sample_parts.csv first
+
+═════════════════════════════════════════════════════════════════════════════
+
+DETAILED GUIDE
+See ANDROID_TESTING.md for complete setup and troubleshooting
+
+═════════════════════════════════════════════════════════════════════════════
+
+Server Status: ✓ RUNNING on http://192.168.150.103:8000
+Last Updated: 2026-06-19

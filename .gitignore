@@ -1,0 +1,33 @@
+# System files
+*.pyc
+__pycache__/
+*.pyo
+.DS_Store
+Thumbs.db
+
+# Python
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Uploads directory (contains user data)
+uploads/
+
+# Node (if any)
+node_modules/
+package-lock.json
+npm-debug.log
+
+# IDE settings
+.claude/settings.local.json
+
+# Environment files
+.env
+.env.local
