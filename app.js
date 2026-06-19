@@ -444,8 +444,8 @@ class InventoryApp {
         }
     }
 
-    // Show image preview and manual entry option
-    showImagePreview(imageData) {
+    // Show image preview with OCR barcode detection
+    async showImagePreview(imageData) {
         const modal = document.createElement('div');
         modal.style.cssText = `
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -475,16 +475,25 @@ class InventoryApp {
         const handleRetake = () => {
             console.log('Retaking photo...');
             closeModal();
-            // Optionally restart camera
-            // this.startScanning();
         };
 
         modal.innerHTML = `
-            <div style="background: white; padding: 20px; border-radius: 10px; max-width: 90%; text-align: center;">
+            <div style="background: white; padding: 20px; border-radius: 10px; max-width: 90%; text-align: center; max-height: 90vh; overflow-y: auto;">
                 <h2>Captured Photo</h2>
                 <img src="${imageData}" style="width: 100%; max-width: 500px; border-radius: 8px; margin: 15px 0;">
-                <p style="font-size: 14px; color: #666;">
-                    📍 Enter the barcode or QR code number from the image
+
+                <div id="ocr-status" style="font-size: 14px; color: #666; margin: 12px 0; padding: 12px; background: #f0f0f0; border-radius: 6px;">
+                    ⏳ Analyzing image with OCR...
+                </div>
+
+                <div id="ocr-result" style="display: none; margin: 12px 0; padding: 12px; background: #d5f4e6; border-radius: 6px; border-left: 4px solid #27ae60;">
+                    <strong>✓ Barcode/QR detected:</strong>
+                    <div id="extracted-code-display" style="font-size: 18px; font-weight: bold; color: #27ae60; margin-top: 8px;"></div>
+                    <small style="color: #666; display: block; margin-top: 6px;" id="confidence-display"></small>
+                </div>
+
+                <p style="font-size: 14px; color: #666; margin: 12px 0;">
+                    📍 Review or manually enter the barcode/QR code number:
                 </p>
                 <div style="display: flex; gap: 10px; margin: 15px 0;">
                     <input type="text" placeholder="e.g., 123456789" id="captured-barcode"
@@ -511,12 +520,102 @@ class InventoryApp {
             if (e.key === 'Enter') handleUseCode();
         });
 
+        // Perform OCR extraction
+        await this.extractBarcodeFromImage(imageData);
+
         // Focus on input
         setTimeout(() => {
             document.getElementById('captured-barcode').focus();
         }, 100);
 
-        console.log('Image preview modal created');
+        console.log('Image preview modal created with OCR');
+    }
+
+    // Extract barcode/QR code from image using OCR
+    async extractBarcodeFromImage(imageData) {
+        try {
+            const statusDiv = document.getElementById('ocr-status');
+            const resultDiv = document.getElementById('ocr-result');
+            const codeInput = document.getElementById('captured-barcode');
+
+            console.log('Starting OCR extraction...');
+
+            // Use Tesseract.js to extract text from image
+            const { data: { text, confidence } } = await Tesseract.recognize(
+                imageData,
+                'eng',
+                {
+                    logger: m => {
+                        console.log('OCR progress:', m);
+                        if (m.progress && m.progress < 1) {
+                            statusDiv.innerHTML = `⏳ Analyzing image... ${Math.round(m.progress * 100)}%`;
+                        }
+                    }
+                }
+            );
+
+            console.log('OCR completed. Extracted text:', text);
+            console.log('Confidence:', confidence);
+
+            // Clean up extracted text - look for barcodes (alphanumeric sequences)
+            const extractedCodes = this.parseBarcodesFromText(text);
+
+            if (extractedCodes.length > 0) {
+                const primaryCode = extractedCodes[0];
+                console.log('Primary barcode found:', primaryCode);
+
+                statusDiv.style.display = 'none';
+                resultDiv.style.display = 'block';
+
+                document.getElementById('extracted-code-display').textContent = primaryCode;
+                document.getElementById('confidence-display').textContent =
+                    `Confidence: ${(confidence * 100).toFixed(1)}%`;
+
+                codeInput.value = primaryCode;
+            } else {
+                // No barcode found, just show confidence
+                statusDiv.innerHTML = `
+                    ⚠️ No clear barcode detected (Confidence: ${(confidence * 100).toFixed(1)}%)<br>
+                    <small>Please enter the barcode manually or retake the photo</small>
+                `;
+                resultDiv.style.display = 'none';
+            }
+
+        } catch (err) {
+            console.error('OCR Error:', err);
+            const statusDiv = document.getElementById('ocr-status');
+            statusDiv.innerHTML = `
+                ⚠️ OCR analysis failed<br>
+                <small>Please enter the barcode manually</small>
+            `;
+            document.getElementById('ocr-result').style.display = 'none';
+        }
+    }
+
+    // Parse barcodes from OCR text
+    parseBarcodesFromText(text) {
+        if (!text) return [];
+
+        // Split by whitespace and newlines, then filter for likely barcodes
+        const tokens = text.split(/\s+/).filter(t => t.length > 0);
+
+        // Look for common barcode patterns:
+        // - Alphanumeric sequences of 5+ characters (like SKU codes)
+        // - Numeric sequences (like UPC/EAN codes)
+        const barcodes = tokens.filter(token => {
+            // Remove special characters commonly misread by OCR
+            const cleaned = token.replace(/[^a-zA-Z0-9\-]/g, '');
+
+            // Accept if it's alphanumeric and at least 3 characters
+            // or all numeric and at least 5 digits (typical barcode length)
+            return /^[a-zA-Z0-9\-]+$/.test(cleaned) && (
+                cleaned.length >= 3 ||
+                (/^\d+$/.test(cleaned) && cleaned.length >= 5)
+            );
+        });
+
+        // Remove duplicates and sort by length (prefer longer, more specific codes)
+        return [...new Set(barcodes)].sort((a, b) => b.length - a.length);
     }
 
     // Handle file upload from phone
