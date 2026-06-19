@@ -558,14 +558,14 @@
 
                 <div>
                     <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #2c3e50;">
-                        Option B: Upload CSV File
+                        Option B: Upload Excel or CSV File
                     </div>
                     <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 8px;">
-                        Download your Google Sheet as CSV (File → Download → CSV). Make sure it has columns: "Part Number" and "Part Name"
+                        Download your Google Sheet as Excel (.xlsx) or CSV. Make sure it has columns: "Part Number" and "Part Name"
                     </p>
                     <div class="file-input-wrapper">
-                        <input type="file" id="csv-file" accept=".csv" onchange="app.importCSV(event)">
-                        <label class="file-input-label" for="csv-file">Choose CSV File</label>
+                        <input type="file" id="csv-file" accept=".csv,.xlsx,.xls" onchange="app.importFile(event)">
+                        <label class="file-input-label" for="csv-file">Choose Excel or CSV File</label>
                     </div>
                     <div id="file-status" class="file-name" style="display: none;"></div>
                 </div>
@@ -632,8 +632,9 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest/umd/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.4/dist/html5-qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

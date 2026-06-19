@@ -10,6 +10,12 @@ import json
 from datetime import datetime
 from pathlib import Path
 import io
+import csv
+try:
+    import openpyxl
+    EXCEL_SUPPORT = True
+except ImportError:
+    EXCEL_SUPPORT = False
 
 app = Flask(__name__)
 
@@ -22,7 +28,7 @@ CORS(app,
 
 # Configuration
 UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'csv'}
+ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -38,7 +44,7 @@ def home():
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
-    """Handle CSV file upload"""
+    """Handle CSV or Excel file upload"""
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
 
@@ -47,35 +53,57 @@ def upload_file():
         return jsonify({'error': 'No file selected'}), 400
 
     if not allowed_file(file.filename):
-        return jsonify({'error': 'Only CSV files allowed'}), 400
+        return jsonify({'error': 'Only CSV, XLSX, and XLS files allowed'}), 400
 
     try:
-        # Save file
+        # Determine file type and convert to CSV
         filename = 'parts.csv'
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
 
-        # Validate CSV
+        if file.filename.endswith(('.xlsx', '.xls')):
+            # Handle Excel file
+            if not EXCEL_SUPPORT:
+                return jsonify({'error': 'Excel support not available. Please use CSV instead'}), 400
+
+            excel_data = file.read()
+            excel_file = io.BytesIO(excel_data)
+            workbook = openpyxl.load_workbook(excel_file)
+            worksheet = workbook.active
+
+            # Convert Excel to CSV
+            with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                for row in worksheet.iter_rows(values_only=True):
+                    writer.writerow(row)
+
+            row_count = worksheet.max_row - 1
+        else:
+            # Handle CSV file
+            file.save(filepath)
+            with open(filepath, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                row_count = len(lines) - 1
+
+        # Validate the CSV file
         with open(filepath, 'r', encoding='utf-8') as f:
             lines = f.readlines()
             if len(lines) < 2:
                 os.remove(filepath)
-                return jsonify({'error': 'CSV must have header and at least one data row'}), 400
+                return jsonify({'error': 'File must have header and at least one data row'}), 400
 
-            # Check columns
-            header = lines[0].strip()
-            if 'Part Number' not in header or 'Part Name' not in header:
+            # Check columns (case-insensitive)
+            header = lines[0].strip().lower()
+            if 'part number' not in header or 'part name' not in header:
                 os.remove(filepath)
-                return jsonify({'error': 'CSV must have "Part Number" and "Part Name" columns'}), 400
-
-            row_count = len(lines) - 1
+                return jsonify({'error': 'File must have "Part Number" and "Part Name" columns'}), 400
 
         # Save metadata
         metadata = {
             'filename': filename,
             'uploaded_at': datetime.now().isoformat(),
             'row_count': row_count,
-            'size': os.path.getsize(filepath)
+            'size': os.path.getsize(filepath),
+            'source_file': file.filename
         }
 
         with open(os.path.join(UPLOAD_FOLDER, 'metadata.json'), 'w') as f:

@@ -65,6 +65,24 @@ class InventoryApp {
         }
     }
 
+    // Import file (CSV or Excel)
+    async importFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        try {
+            if (file.name.endsWith('.csv')) {
+                this.importCSV(event);
+            } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                this.importExcel(file);
+            } else {
+                alert('Unsupported file format. Please use CSV, XLSX, or XLS');
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
     // CSV Import
     async importCSV(event) {
         const file = event.target.files[0];
@@ -82,6 +100,66 @@ class InventoryApp {
                 alert('Error parsing CSV: ' + error.message);
             }
         });
+    }
+
+    // Excel Import
+    async importExcel(file) {
+        try {
+            const reader = new FileReader();
+
+            reader.onload = async (e) => {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheet];
+
+                // Convert to JSON with headers
+                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                // Validate required columns
+                if (jsonData.length === 0) {
+                    alert('Excel file is empty');
+                    return;
+                }
+
+                const firstRow = jsonData[0];
+                const hasPartNumber = Object.keys(firstRow).some(key =>
+                    key.toLowerCase().includes('part number') || key.toLowerCase().includes('partnumber')
+                );
+                const hasPartName = Object.keys(firstRow).some(key =>
+                    key.toLowerCase().includes('part name') || key.toLowerCase().includes('partname')
+                );
+
+                if (!hasPartNumber || !hasPartName) {
+                    alert('Excel must have columns: "Part Number" and "Part Name"');
+                    return;
+                }
+
+                // Normalize column names to match CSV format
+                const normalizedData = jsonData.map(row => {
+                    const normalized = {};
+                    Object.keys(row).forEach(key => {
+                        if (key.toLowerCase().includes('part number') || key.toLowerCase().includes('partnumber')) {
+                            normalized['Part Number'] = row[key];
+                        } else if (key.toLowerCase().includes('part name') || key.toLowerCase().includes('partname')) {
+                            normalized['Part Name'] = row[key];
+                        } else {
+                            normalized[key] = row[key];
+                        }
+                    });
+                    return normalized;
+                });
+
+                await this.saveParts(normalizedData);
+                document.getElementById('file-status').textContent = `✓ Imported ${normalizedData.length} parts from Excel`;
+                document.getElementById('file-status').style.display = 'block';
+                this.updateStats();
+            };
+
+            reader.readAsArrayBuffer(file);
+        } catch (error) {
+            alert('Error parsing Excel: ' + error.message);
+        }
     }
 
     // Fetch CSV from backend server
@@ -183,24 +261,25 @@ class InventoryApp {
 
             this.showAlert('📷 Requesting camera access... Point at barcode', 'info');
 
-            this.codeReader = new ZXing.BrowserMultiFormatReader();
+            // Create html5-qrcode scanner
+            this.html5QrcodeScanner = new Html5Qrcode('scanner-preview');
 
             console.log('Getting video input devices...');
-            const devices = await this.codeReader.getVideoInputDevices();
+            const devices = await Html5Qrcode.getCameras();
 
-            if (devices.length === 0) {
+            if (!devices || devices.length === 0) {
                 throw new Error('No camera found on device');
             }
 
             // Prefer back camera (environment facing) over front camera
-            let selectedDeviceId = devices[0].deviceId;
+            let selectedDeviceId = devices[0].id;
 
             // Try to find back camera
             const backCamera = devices.find(device =>
                 device.label && device.label.toLowerCase().includes('back')
             );
             if (backCamera) {
-                selectedDeviceId = backCamera.deviceId;
+                selectedDeviceId = backCamera.id;
                 console.log('Using back camera:', selectedDeviceId);
             } else {
                 console.log('Back camera not found, using first available camera:', selectedDeviceId);
@@ -208,18 +287,20 @@ class InventoryApp {
 
             this.showAlert('✓ Camera ready! Scanning for barcodes...', 'success');
 
-            // Use continuous decoding from video device with facingMode preference
-            await this.codeReader.decodeFromVideoDevice(
+            // Start scanning with back camera preference
+            await this.html5QrcodeScanner.start(
                 selectedDeviceId,
-                video,
-                (result, err) => {
-                    if (result) {
-                        console.log('Barcode scanned:', result.getText());
-                        this.handleBarcodeScan(result.getText());
-                    }
-                    if (err && !(err instanceof ZXing.NotFoundException)) {
-                        console.error('Scan error:', err);
-                    }
+                {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 },
+                    facingMode: 'environment'
+                },
+                (decodedText, decodedResult) => {
+                    console.log('Barcode scanned:', decodedText);
+                    this.handleBarcodeScan(decodedText);
+                },
+                (errorMessage) => {
+                    // Ignore scanning errors (no barcode in frame)
                 }
             );
 
@@ -229,12 +310,10 @@ class InventoryApp {
             console.error('Camera error:', err);
 
             let errorMsg = '';
-            if (err.message.includes('enumerate')) {
-                errorMsg = '❌ Camera enumeration failed\n\nUse manual entry instead:\n1. Scroll down\n2. Enter part number manually\n3. Click "Lookup Part"';
-            } else if (err.message.includes('Permission denied')) {
-                errorMsg = '❌ Camera permission denied\n\nGo to Settings → Apps → [Browser] → Permissions → Camera → Allow\n\nOr use manual entry below';
-            } else if (err.message.includes('NotFoundError') || err.message.includes('No camera')) {
+            if (err.message.includes('Camera not found') || err.message.includes('No cameras found')) {
                 errorMsg = '❌ No camera found\n\nUse manual entry instead:\n1. Scroll down to "Manual Entry"\n2. Enter part number\n3. Click "Lookup Part"';
+            } else if (err.message.includes('Permission denied') || err.message.includes('permission')) {
+                errorMsg = '❌ Camera permission denied\n\nGo to Settings → Apps → [Browser] → Permissions → Camera → Allow\n\nOr use manual entry below';
             } else {
                 errorMsg = `❌ ${err.message || 'Camera access failed'}\n\nUse manual entry as alternative`;
             }
@@ -246,10 +325,14 @@ class InventoryApp {
 
     // Stop camera
     async stopScanning() {
-        if (this.codeReader) {
-            this.codeReader.reset();
-            document.getElementById('scanner-preview').style.display = 'none';
-            this.isScanning = false;
+        if (this.html5QrcodeScanner && this.isScanning) {
+            try {
+                await this.html5QrcodeScanner.stop();
+                document.getElementById('scanner-preview').style.display = 'none';
+                this.isScanning = false;
+            } catch (err) {
+                console.error('Error stopping scanner:', err);
+            }
         }
     }
 
