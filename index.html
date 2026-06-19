@@ -455,15 +455,21 @@
         <div id="scan" class="tab-content active">
             <!-- Barcode Scanning Section -->
             <div id="barcode-section">
-                <h3 style="margin-bottom: 12px; color: #2c3e50;">📷 Option 1: Barcode Scanning</h3>
+                <h3 style="margin-bottom: 12px; color: #2c3e50;">📷 Option 1: Live Barcode Scanning</h3>
+                <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 12px;">
+                    📍 Like UPI apps: Camera continuously scans - just point at barcode/QR code
+                </p>
 
                 <div class="scan-controls">
-                    <button class="btn-primary" onclick="app.startScanning()">Start Camera</button>
-                    <button class="btn-success" onclick="app.capturePhoto()" style="width: 100%; margin-bottom: 8px;">📸 Capture Photo</button>
-                    <button class="btn-danger" onclick="app.stopScanning()">Stop Camera</button>
+                    <button class="btn-primary" onclick="app.startScanning()" style="width: 100%; margin-bottom: 8px;">Start Live Scanner</button>
+                    <button class="btn-danger" onclick="app.stopScanning()" style="width: 100%;">Stop Camera</button>
                 </div>
 
                 <video id="scanner-preview" autoplay playsinline muted style="display: none; margin-bottom: 16px; width: 100%; max-height: 400px; background: #000;"></video>
+
+                <div id="scanner-feedback" style="display: none; text-align: center; font-size: 13px; color: #666; padding: 10px; background: #f0f0f0; border-radius: 6px; margin-bottom: 16px;">
+                    ⏳ Scanning in real-time...
+                </div>
 
                 <div style="margin-bottom: 16px; text-align: center; font-size: 12px; color: #7f8c8d;">
                     OR

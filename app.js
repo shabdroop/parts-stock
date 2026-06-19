@@ -8,6 +8,8 @@ class InventoryApp {
         this.currentEditingId = null;
         this.qrScanner = null;
         this.orientationLocked = false;
+        this.html5QrcodeScanner = null;
+        this.isScanning = false;
         this.init();
     }
 
@@ -385,108 +387,110 @@ class InventoryApp {
         });
     }
 
-    // Start camera with capture functionality
+    // Start continuous video stream scanning (like UPI/Payment apps)
     async startScanning() {
         try {
             const video = document.getElementById('scanner-preview');
             video.style.display = 'block';
 
-            this.showAlert('📷 Requesting camera access... Please allow when prompted', 'info');
+            this.showAlert('📷 Starting real-time scanner...', 'info');
 
-            // Request camera with back camera preference
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    facingMode: { ideal: 'environment' },
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
+            // Initialize html5-qrcode for continuous scanning
+            const config = {
+                fps: 10,  // Scan 10 frames per second (payment app standard)
+                qrbox: { width: 250, height: 250 },  // Scan center region only
+                aspectRatio: 1.77,
+                disableFlip: false,  // Try both normal and inverted
+                rememberLastUsedCamera: true
+            };
+
+            this.html5QrcodeScanner = new Html5Qrcode('scanner-preview');
+
+            await this.html5QrcodeScanner.start(
+                { facingMode: { ideal: 'environment' } },
+                config,
+                async (decodedText) => {
+                    // SUCCESS - Barcode/QR detected
+                    console.log('Barcode detected:', decodedText);
+                    this.showAlert(`✓ Detected: ${decodedText}`, 'success');
+
+                    // Stop scanning
+                    await this.stopScanning();
+
+                    // Process the barcode
+                    await this.handleBarcodeScan(decodedText);
                 },
-                audio: false
-            });
+                (errorMessage) => {
+                    // Continuous scanning expects many failures - just continue
+                    // Don't spam console logs
+                }
+            );
 
-            console.log('Camera stream obtained');
-            video.srcObject = stream;
-            this.scanningStream = stream;
             this.isScanning = true;
-
-            this.showAlert('✓ Camera ready! Click "📸 Capture Photo" to scan barcode', 'success');
+            this.showAlert('✓ Real-time QR/Barcode scanner active\n\n📍 Point camera at code', 'success');
 
         } catch (err) {
             console.error('Camera error:', err);
-
-            let errorMsg = '';
-            const errMsg = err.message ? err.message.toLowerCase() : '';
-
-            if (errMsg.includes('notfounderr') || errMsg.includes('no camera')) {
-                errorMsg = '❌ No camera found on device\n\nUse:\n1. Manual entry below\n2. Or upload barcode image';
-            } else if (errMsg.includes('notallowederror') || errMsg.includes('permission') || errMsg.includes('denied')) {
-                errorMsg = '❌ Camera permission denied\n\n📱 Android: Settings → Chrome → Permissions → Camera → Allow\n\nOr use manual entry / upload image';
-            } else {
-                errorMsg = `❌ ${err.message || 'Camera access failed'}\n\nUse manual entry or upload barcode image`;
-            }
-
-            this.showAlert(errorMsg, 'error');
-            document.getElementById('scanner-preview').style.display = 'none';
+            this.handleCameraError(err);
         }
     }
 
-    // Capture photo from camera with correct orientation
+    // Handle camera errors
+    handleCameraError(err) {
+        let errorMsg = '';
+        const errMsg = err.message ? err.message.toLowerCase() : '';
+
+        if (errMsg.includes('notfounderr') || errMsg.includes('no camera')) {
+            errorMsg = '❌ No camera found\n\nUse:\n• Upload barcode image\n• Manual entry below';
+        } else if (errMsg.includes('notallowederror') || errMsg.includes('permission') || errMsg.includes('denied')) {
+            errorMsg = '❌ Camera permission denied\n\n📱 Android: Settings → Chrome → Permissions → Camera → Allow\n\nOr use image upload / manual entry';
+        } else {
+            errorMsg = `❌ Camera error: ${err.message}\n\nUse image upload or manual entry`;
+        }
+
+        this.showAlert(errorMsg, 'error');
+        document.getElementById('scanner-preview').style.display = 'none';
+    }
+
+    // Capture current frame from video for manual review
     async capturePhoto() {
         try {
             const video = document.getElementById('scanner-preview');
 
-            console.log('Video readyState:', video.readyState);
-            console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
-            console.log('Device orientation:', screen.orientation?.type);
-
-            // Wait for video to have data
             if (video.readyState !== video.HAVE_ENOUGH_DATA) {
-                this.showAlert('⏳ Camera warming up... Please wait a moment and try again', 'info');
+                this.showAlert('⏳ Camera warming up... Please wait', 'info');
                 return;
             }
 
             if (video.videoWidth === 0 || video.videoHeight === 0) {
-                this.showAlert('⏳ Camera not ready yet. Please wait a moment and try again', 'info');
+                this.showAlert('⏳ Camera not ready yet', 'info');
                 return;
             }
 
-            // Get device orientation
-            const orientation = screen.orientation?.type || window.orientation;
-            const isLandscape = orientation.includes('landscape');
-
-            // Create canvas with correct dimensions based on orientation
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
 
-            // For Android, camera sensor is typically fixed at landscape
-            // We need to handle rotation based on device orientation
+            const orientation = screen.orientation?.type || window.orientation;
+            const isLandscape = orientation.includes('landscape');
             const needsRotation = !isLandscape;
 
             if (needsRotation) {
-                // Rotate 90 degrees for portrait mode
                 canvas.width = video.videoHeight;
                 canvas.height = video.videoWidth;
                 ctx.translate(canvas.width, 0);
                 ctx.rotate((90 * Math.PI) / 180);
                 ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
             } else {
-                // Landscape - use as-is
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             }
 
-            console.log('Canvas size:', canvas.width, 'x', canvas.height);
-            console.log('Rotation applied:', needsRotation);
-
-            // Convert to image and show preview
             const imageData = canvas.toDataURL('image/jpeg', 0.9);
-
-            // Show preview modal
             await this.showImagePreview(imageData);
 
         } catch (err) {
             console.error('Capture error:', err);
-            console.error('Error stack:', err.stack);
             this.showAlert('❌ Error capturing photo: ' + err.message, 'error');
         }
     }
@@ -533,6 +537,13 @@ class InventoryApp {
             closeModal();
         };
 
+        const handleRetry = async () => {
+            console.log('Retrying scanner...');
+            closeModal();
+            // Restart continuous scanner for another attempt
+            await this.retryScanning();
+        };
+
         const handleRetake = () => {
             console.log('Retaking photo...');
             closeModal();
@@ -565,11 +576,14 @@ class InventoryApp {
                     <input type="text" placeholder="e.g., 123456789" id="captured-barcode"
                            style="flex: 1; padding: 12px; border: 2px solid #3498db; border-radius: 5px; font-size: 16px;">
                 </div>
-                <div style="display: flex; gap: 10px;">
-                    <button id="retake-btn" style="flex: 1; padding: 12px; background: #95a5a6; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">
-                        🔄 Retake
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button id="retry-btn" style="flex: 1; min-width: 120px; padding: 12px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">
+                        🔄 Retry Scanner
                     </button>
-                    <button id="use-code-btn" style="flex: 1; padding: 12px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">
+                    <button id="retake-btn" style="flex: 1; min-width: 120px; padding: 12px; background: #95a5a6; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">
+                        📸 Retake
+                    </button>
+                    <button id="use-code-btn" style="flex: 1; min-width: 120px; padding: 12px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">
                         ✓ Use Code
                     </button>
                 </div>
@@ -581,6 +595,7 @@ class InventoryApp {
 
         // Attach event listeners
         document.getElementById('rotate-btn').addEventListener('click', () => rotateImage());
+        document.getElementById('retry-btn').addEventListener('click', () => handleRetry());
         document.getElementById('retake-btn').addEventListener('click', () => handleRetake());
         document.getElementById('use-code-btn').addEventListener('click', () => handleUseCode());
         document.getElementById('captured-barcode').addEventListener('keypress', (e) => {
@@ -698,11 +713,22 @@ class InventoryApp {
         }
     }
 
-    // Stop camera
+    // Stop camera and scanner
     async stopScanning() {
         this.isScanning = false;
 
         try {
+            // Stop continuous scanner
+            if (this.html5QrcodeScanner) {
+                try {
+                    await this.html5QrcodeScanner.stop();
+                    this.html5QrcodeScanner = null;
+                    console.log('QR scanner stopped');
+                } catch (err) {
+                    console.error('Error stopping scanner:', err);
+                }
+            }
+
             // Stop camera stream
             if (this.scanningStream) {
                 this.scanningStream.getTracks().forEach(track => track.stop());
@@ -720,6 +746,28 @@ class InventoryApp {
             this.showAlert('📷 Camera stopped', 'info');
         } catch (err) {
             console.error('Error stopping camera:', err);
+        }
+    }
+
+    // Retry scanning (for when detection fails)
+    async retryScanning() {
+        try {
+            this.showAlert('🔄 Restarting scanner...', 'info');
+
+            // Stop current scanner
+            if (this.html5QrcodeScanner) {
+                try {
+                    await this.html5QrcodeScanner.stop();
+                } catch (err) {
+                    console.error('Error stopping scanner:', err);
+                }
+            }
+
+            // Start fresh
+            await this.startScanning();
+        } catch (err) {
+            console.error('Retry error:', err);
+            this.showAlert('❌ Error restarting scanner: ' + err.message, 'error');
         }
     }
 
