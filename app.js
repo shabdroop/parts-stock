@@ -357,66 +357,77 @@ class InventoryApp {
         });
     }
 
-    // Start camera
+    // Start camera with jsQR
     async startScanning() {
         try {
             const video = document.getElementById('scanner-preview');
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
             video.style.display = 'block';
 
             this.showAlert('📷 Requesting camera access... Please allow when prompted', 'info');
 
-            console.log('html5-qrcode library available:', typeof Html5Qrcode !== 'undefined');
+            console.log('jsQR library available:', typeof jsQR !== 'undefined');
 
-            // Create html5-qrcode scanner
-            this.html5QrcodeScanner = new Html5Qrcode('scanner-preview');
-
-            console.log('Getting available cameras...');
-            const devices = await Html5Qrcode.getCameras();
-
-            console.log('Devices found:', devices);
-
-            if (!devices || devices.length === 0) {
-                throw new Error('No camera found on device');
-            }
-
-            // Prefer back camera (environment facing) over front camera
-            let selectedDeviceId = devices[0].id;
-            let selectedLabel = devices[0].label || 'Camera 1';
-
-            // Try to find back camera
-            const backCamera = devices.find(device =>
-                device.label && device.label.toLowerCase().includes('back')
-            );
-            if (backCamera) {
-                selectedDeviceId = backCamera.id;
-                selectedLabel = backCamera.label;
-                console.log('Using back camera:', selectedDeviceId, selectedLabel);
-            } else {
-                console.log('Back camera not found, using first available:', selectedDeviceId, selectedLabel);
-            }
-
-            this.showAlert(`✓ Camera ready (${selectedLabel})! Scanning for barcodes...`, 'success');
-
-            // Start scanning
-            console.log('Starting camera with device ID:', selectedDeviceId);
-
-            await this.html5QrcodeScanner.start(
-                selectedDeviceId,
-                {
-                    fps: 10,
-                    qrbox: { width: 250, height: 250 }
+            // Request camera access with back camera preference
+            const constraints = {
+                video: {
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
                 },
-                (decodedText, decodedResult) => {
-                    console.log('Barcode/QR scanned:', decodedText);
-                    this.handleBarcodeScan(decodedText);
-                },
-                (errorMessage) => {
-                    // Ignore scanning errors (no barcode in frame)
-                    // console.log('Scanning...', errorMessage);
-                }
-            );
+                audio: false
+            };
 
+            console.log('Requesting camera with constraints:', constraints);
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+            console.log('Camera stream obtained');
+            video.srcObject = stream;
+
+            // Set canvas size to match video
+            video.onloadedmetadata = () => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                console.log('Canvas size:', canvas.width, 'x', canvas.height);
+            };
+
+            this.showAlert('✓ Camera ready! Scanning for QR codes...', 'success');
+
+            // Start scanning loop
             this.isScanning = true;
+            this.scanningStream = stream;
+
+            const scanFrame = () => {
+                if (!this.isScanning) return;
+
+                try {
+                    // Draw video frame to canvas
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                    // Get image data and decode QR code
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                        inversionAttempts: 'dontInvert'
+                    });
+
+                    if (code) {
+                        console.log('QR code scanned:', code.data);
+                        this.handleBarcodeScan(code.data);
+                        // Don't stop scanning, allow multiple scans
+                    }
+                } catch (frameError) {
+                    // Silently continue scanning if frame processing fails
+                }
+
+                if (this.isScanning) {
+                    requestAnimationFrame(scanFrame);
+                }
+            };
+
+            // Start the scanning animation loop
+            requestAnimationFrame(scanFrame);
             console.log('Camera scanning started successfully');
 
         } catch (err) {
@@ -426,32 +437,38 @@ class InventoryApp {
             let errorMsg = '';
             const errMsg = err.message ? err.message.toLowerCase() : '';
 
-            if (errMsg.includes('no cameras') || errMsg.includes('no camera') || errMsg.includes('camera not found')) {
+            if (errMsg.includes('notfounderr') || errMsg.includes('no camera')) {
                 errorMsg = '❌ No camera found on device\n\nUse manual entry instead:\n1. Scroll down to "Manual Entry"\n2. Enter part number\n3. Click "Lookup Part"';
-            } else if (errMsg.includes('permission') || errMsg.includes('denied')) {
-                errorMsg = '❌ Camera permission denied\n\n📱 Android: Go to Settings → Apps → [Browser] → Permissions → Camera → Allow\n🖥️ Desktop: Check browser camera permissions\n\nOr use manual entry below';
-            } else if (errMsg.includes('NotAllowedError')) {
-                errorMsg = '❌ Camera access blocked\n\nCheck your browser camera permissions and try again';
+            } else if (errMsg.includes('notallowederror') || errMsg.includes('permission') || errMsg.includes('denied')) {
+                errorMsg = '❌ Camera permission denied\n\n📱 Android: Go to Settings → Apps → Chrome → Permissions → Camera → Allow\n🖥️ Desktop: Check browser camera permissions\n\nOr use manual entry below';
             } else {
-                errorMsg = `❌ ${err.message || 'Camera access failed'}\n\nTroubleshooting:\n1. Check camera permissions\n2. Try a different browser\n3. Use manual entry as fallback`;
+                errorMsg = `❌ ${err.message || 'Camera access failed'}\n\nTroubleshooting:\n1. Check camera permissions\n2. Try HTTPS connection\n3. Use manual entry as fallback`;
             }
 
             this.showAlert(errorMsg, 'error');
-            video.style.display = 'none';
+            document.getElementById('scanner-preview').style.display = 'none';
         }
     }
 
     // Stop camera
     async stopScanning() {
-        if (this.html5QrcodeScanner && this.isScanning) {
-            try {
-                await this.html5QrcodeScanner.stop();
-                document.getElementById('scanner-preview').style.display = 'none';
-                this.isScanning = false;
-            } catch (err) {
-                console.error('Error stopping scanner:', err);
-            }
+        this.isScanning = false;
+
+        // Stop camera stream
+        if (this.scanningStream) {
+            this.scanningStream.getTracks().forEach(track => track.stop());
+            this.scanningStream = null;
+            console.log('Camera stream stopped');
         }
+
+        // Hide video element
+        const video = document.getElementById('scanner-preview');
+        if (video) {
+            video.style.display = 'none';
+            video.srcObject = null;
+        }
+
+        this.showAlert('📷 Camera stopped', 'info');
     }
 
     // Handle barcode scan result
