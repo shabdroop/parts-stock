@@ -441,8 +441,11 @@
         });
 
         function uploadFile(file) {
-            if (!file.name.endsWith('.csv')) {
-                showStatus('Only CSV files allowed', 'error');
+            const allowedExtensions = ['.csv', '.xlsx', '.xls'];
+            const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+
+            if (!allowedExtensions.includes(fileExtension)) {
+                showStatus('Only Excel (.xlsx, .xls) and CSV files allowed', 'error');
                 return;
             }
 
@@ -486,7 +489,7 @@
                 if (data.uploaded) {
                     statusDiv.innerHTML = `
                         <div class="status-box success">
-                            ✓ CSV file uploaded successfully
+                            ✓ File uploaded successfully
                         </div>
                     `;
                     document.getElementById('partCount').textContent = data.metadata.row_count;
@@ -496,7 +499,7 @@
                 } else {
                     statusDiv.innerHTML = `
                         <div class="status-box info">
-                            No CSV file uploaded yet. Upload one to get started.
+                            No file uploaded yet. Upload Excel or CSV to get started.
                         </div>
                     `;
                     currentStatus.classList.add('hide');
