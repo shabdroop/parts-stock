@@ -357,83 +357,74 @@ class InventoryApp {
         });
     }
 
-    // Start camera with jsQR
+    // Start camera with QuaggaJS for barcode/QR scanning
     async startScanning() {
         try {
             const video = document.getElementById('scanner-preview');
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
             video.style.display = 'block';
 
             this.showAlert('📷 Requesting camera access... Please allow when prompted', 'info');
 
-            console.log('jsQR library available:', typeof jsQR !== 'undefined');
+            console.log('QuaggaJS library available:', typeof Quagga !== 'undefined');
 
-            // Request camera access with back camera preference
-            const constraints = {
-                video: {
-                    facingMode: { ideal: 'environment' },
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
+            if (typeof Quagga === 'undefined') {
+                throw new Error('Barcode scanner library not loaded yet. Please wait a moment and try again.');
+            }
+
+            // Initialize QuaggaJS
+            console.log('Initializing QuaggaJS...');
+
+            Quagga.init({
+                inputStream: {
+                    type: 'LiveStream',
+                    constraints: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'environment'
+                    },
+                    target: video
                 },
-                audio: false
-            };
+                decoder: {
+                    readers: [
+                        'code_128_reader',
+                        'ean_reader',
+                        'ean_8_reader',
+                        'upc_reader',
+                        'upc_e_reader',
+                        'codabar_reader',
+                        'code_39_reader',
+                        'code_39_vin_reader',
+                        'qr_code_reader'
+                    ]
+                },
+                locator: {
+                    patchSize: 'medium',
+                    halfSample: true
+                },
+                numOfWorkers: navigator.hardwareConcurrency || 4,
+                frequency: 10
+            }, (err) => {
+                if (err) {
+                    console.error('QuaggaJS initialization error:', err);
+                    this.showAlert('❌ Error initializing barcode scanner: ' + err.message, 'error');
+                    video.style.display = 'none';
+                    return;
+                }
 
-            console.log('Requesting camera with constraints:', constraints);
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                console.log('QuaggaJS initialized successfully');
+                Quagga.start();
+                this.isScanning = true;
+                this.showAlert('✓ Camera ready! Scanning for barcodes and QR codes...', 'success');
 
-            console.log('Camera stream obtained');
-            video.srcObject = stream;
-
-            // Set canvas size to match video
-            video.onloadedmetadata = () => {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                console.log('Canvas size:', canvas.width, 'x', canvas.height);
-            };
-
-            this.showAlert('✓ Camera ready! Scanning for QR codes...', 'success');
-
-            // Start scanning loop
-            this.isScanning = true;
-            this.scanningStream = stream;
-
-            const scanFrame = () => {
-                if (!this.isScanning) return;
-
-                try {
-                    // Draw video frame to canvas
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-                    // Get image data and decode QR code
-                    if (typeof jsQR === 'function') {
-                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                            inversionAttempts: 'dontInvert'
-                        });
-
-                        if (code) {
-                            console.log('QR code scanned:', code.data);
-                            this.handleBarcodeScan(code.data);
-                            // Don't stop scanning, allow multiple scans
-                        }
-                    } else {
-                        console.warn('jsQR not available yet, waiting for library to load...');
+                // Handle detected codes
+                Quagga.onDetected((result) => {
+                    if (result.codeResult && result.codeResult.code) {
+                        const barcode = result.codeResult.code;
+                        console.log('Barcode scanned:', barcode);
+                        this.handleBarcodeScan(barcode);
                     }
-                } catch (frameError) {
-                    // Silently continue scanning if frame processing fails
-                    // console.log('Frame scan error:', frameError);
-                }
-
-                if (this.isScanning) {
-                    requestAnimationFrame(scanFrame);
-                }
-            };
-
-            // Start the scanning animation loop
-            requestAnimationFrame(scanFrame);
-            console.log('Camera scanning started successfully');
+                });
+            });
 
         } catch (err) {
             console.error('Camera error:', err);
@@ -459,21 +450,24 @@ class InventoryApp {
     async stopScanning() {
         this.isScanning = false;
 
-        // Stop camera stream
-        if (this.scanningStream) {
-            this.scanningStream.getTracks().forEach(track => track.stop());
-            this.scanningStream = null;
-            console.log('Camera stream stopped');
-        }
+        try {
+            // Stop QuaggaJS if it's running
+            if (typeof Quagga !== 'undefined') {
+                Quagga.stop();
+                console.log('QuaggaJS stopped');
+            }
 
-        // Hide video element
-        const video = document.getElementById('scanner-preview');
-        if (video) {
-            video.style.display = 'none';
-            video.srcObject = null;
-        }
+            // Hide video element
+            const video = document.getElementById('scanner-preview');
+            if (video) {
+                video.style.display = 'none';
+                video.srcObject = null;
+            }
 
-        this.showAlert('📷 Camera stopped', 'info');
+            this.showAlert('📷 Camera stopped', 'info');
+        } catch (err) {
+            console.error('Error stopping camera:', err);
+        }
     }
 
     // Handle barcode scan result
