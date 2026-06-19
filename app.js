@@ -357,7 +357,7 @@ class InventoryApp {
         });
     }
 
-    // Start camera with QuaggaJS for barcode/QR scanning
+    // Start camera with capture functionality
     async startScanning() {
         try {
             const video = document.getElementById('scanner-preview');
@@ -365,84 +365,134 @@ class InventoryApp {
 
             this.showAlert('📷 Requesting camera access... Please allow when prompted', 'info');
 
-            console.log('QuaggaJS library available:', typeof Quagga !== 'undefined');
-
-            if (typeof Quagga === 'undefined') {
-                throw new Error('Barcode scanner library not loaded yet. Please wait a moment and try again.');
-            }
-
-            // Initialize QuaggaJS
-            console.log('Initializing QuaggaJS...');
-
-            Quagga.init({
-                inputStream: {
-                    type: 'LiveStream',
-                    constraints: {
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        facingMode: 'environment'
-                    },
-                    target: video
+            // Request camera with back camera preference
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
                 },
-                decoder: {
-                    readers: [
-                        'code_128_reader',
-                        'ean_reader',
-                        'ean_8_reader',
-                        'upc_reader',
-                        'upc_e_reader',
-                        'codabar_reader',
-                        'code_39_reader',
-                        'code_39_vin_reader',
-                        'qr_code_reader'
-                    ]
-                },
-                locator: {
-                    patchSize: 'medium',
-                    halfSample: true
-                },
-                numOfWorkers: navigator.hardwareConcurrency || 4,
-                frequency: 10
-            }, (err) => {
-                if (err) {
-                    console.error('QuaggaJS initialization error:', err);
-                    this.showAlert('❌ Error initializing barcode scanner: ' + err.message, 'error');
-                    video.style.display = 'none';
-                    return;
-                }
-
-                console.log('QuaggaJS initialized successfully');
-                Quagga.start();
-                this.isScanning = true;
-                this.showAlert('✓ Camera ready! Scanning for barcodes and QR codes...', 'success');
-
-                // Handle detected codes
-                Quagga.onDetected((result) => {
-                    if (result.codeResult && result.codeResult.code) {
-                        const barcode = result.codeResult.code;
-                        console.log('Barcode scanned:', barcode);
-                        this.handleBarcodeScan(barcode);
-                    }
-                });
+                audio: false
             });
+
+            console.log('Camera stream obtained');
+            video.srcObject = stream;
+            this.scanningStream = stream;
+            this.isScanning = true;
+
+            this.showAlert('✓ Camera ready! Click "📸 Capture Photo" to scan barcode', 'success');
 
         } catch (err) {
             console.error('Camera error:', err);
-            console.error('Error stack:', err.stack);
 
             let errorMsg = '';
             const errMsg = err.message ? err.message.toLowerCase() : '';
 
             if (errMsg.includes('notfounderr') || errMsg.includes('no camera')) {
-                errorMsg = '❌ No camera found on device\n\nUse manual entry instead:\n1. Scroll down to "Manual Entry"\n2. Enter part number\n3. Click "Lookup Part"';
+                errorMsg = '❌ No camera found on device\n\nUse:\n1. Manual entry below\n2. Or upload barcode image';
             } else if (errMsg.includes('notallowederror') || errMsg.includes('permission') || errMsg.includes('denied')) {
-                errorMsg = '❌ Camera permission denied\n\n📱 Android: Go to Settings → Apps → Chrome → Permissions → Camera → Allow\n🖥️ Desktop: Check browser camera permissions\n\nOr use manual entry below';
+                errorMsg = '❌ Camera permission denied\n\n📱 Android: Settings → Chrome → Permissions → Camera → Allow\n\nOr use manual entry / upload image';
             } else {
-                errorMsg = `❌ ${err.message || 'Camera access failed'}\n\nTroubleshooting:\n1. Check camera permissions\n2. Try HTTPS connection\n3. Use manual entry as fallback`;
+                errorMsg = `❌ ${err.message || 'Camera access failed'}\n\nUse manual entry or upload barcode image`;
             }
 
             this.showAlert(errorMsg, 'error');
             document.getElementById('scanner-preview').style.display = 'none';
+        }
+    }
+
+    // Capture photo from camera
+    async capturePhoto() {
+        try {
+            const video = document.getElementById('scanner-preview');
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+
+            console.log('Photo captured, showing preview...');
+
+            // Convert to image and show preview
+            const imageData = canvas.toDataURL('image/png');
+
+            // Show preview modal
+            this.showImagePreview(imageData);
+
+        } catch (err) {
+            console.error('Capture error:', err);
+            this.showAlert('❌ Error capturing photo: ' + err.message, 'error');
+        }
+    }
+
+    // Show image preview and manual entry option
+    showImagePreview(imageData) {
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); display: flex; align-items: center;
+            justify-content: center; z-index: 10000;
+        `;
+
+        modal.innerHTML = `
+            <div style="background: white; padding: 20px; border-radius: 10px; max-width: 90%; text-align: center;">
+                <h2>Captured Photo</h2>
+                <img src="${imageData}" style="width: 100%; max-width: 500px; border-radius: 8px; margin: 15px 0;">
+                <p style="font-size: 14px; color: #666;">
+                    Barcode/QR detected? Enter the code below or click Close
+                </p>
+                <div style="display: flex; gap: 10px; margin: 15px 0;">
+                    <input type="text" placeholder="Enter barcode/QR code" id="captured-barcode"
+                           style="flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px;">
+                    <button onclick="document.getElementById('barcode-modal').querySelector('button:nth-child(4)').click()"
+                            style="padding: 10px 20px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        ✓ Use
+                    </button>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="this.closest('div').parentElement.remove()"
+                            style="flex: 1; padding: 10px; background: #95a5a6; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        Retake
+                    </button>
+                    <button onclick="
+                        const code = document.getElementById('captured-barcode').value;
+                        if (code.trim()) {
+                            app.handleBarcodeScan(code.trim());
+                            this.closest('div').parentElement.remove();
+                        } else {
+                            alert('Please enter barcode code');
+                        }
+                    " style="flex: 1; padding: 10px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        Use Code
+                    </button>
+                </div>
+            </div>
+        `;
+        modal.id = 'barcode-modal';
+        document.body.appendChild(modal);
+
+        document.getElementById('captured-barcode').focus();
+    }
+
+    // Handle file upload from phone
+    async handleBarcodeImageUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        try {
+            console.log('Processing uploaded image:', file.name);
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const imageData = e.target.result;
+                this.showImagePreview(imageData);
+            };
+            reader.readAsDataURL(file);
+
+        } catch (err) {
+            console.error('Upload error:', err);
+            this.showAlert('❌ Error processing image: ' + err.message, 'error');
         }
     }
 
@@ -451,10 +501,11 @@ class InventoryApp {
         this.isScanning = false;
 
         try {
-            // Stop QuaggaJS if it's running
-            if (typeof Quagga !== 'undefined') {
-                Quagga.stop();
-                console.log('QuaggaJS stopped');
+            // Stop camera stream
+            if (this.scanningStream) {
+                this.scanningStream.getTracks().forEach(track => track.stop());
+                this.scanningStream = null;
+                console.log('Camera stream stopped');
             }
 
             // Hide video element

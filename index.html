@@ -459,11 +459,22 @@
 
                 <div class="scan-controls">
                     <button class="btn-primary" onclick="app.startScanning()">Start Camera</button>
+                    <button class="btn-success" onclick="app.capturePhoto()" style="width: 100%; margin-bottom: 8px;">📸 Capture Photo</button>
                     <button class="btn-danger" onclick="app.stopScanning()">Stop Camera</button>
                 </div>
 
                 <video id="scanner-preview" style="display: none; margin-bottom: 16px; width: 100%; max-height: 400px;"></video>
-                <canvas id="canvas" style="display: none;"></canvas>
+
+                <div style="margin-bottom: 16px; text-align: center; font-size: 12px; color: #7f8c8d;">
+                    OR
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; width: 100%; padding: 12px 16px; background: #3498db; color: white; border-radius: 6px; text-align: center; cursor: pointer; font-weight: 600;">
+                        📤 Upload Barcode Image
+                        <input type="file" accept="image/*" onchange="app.handleBarcodeImageUpload(event)" style="display: none;">
+                    </label>
+                </div>
 
                 <div id="scan-result" style="display: none;"></div>
             </div>
@@ -633,7 +644,6 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="app.js"></script>
