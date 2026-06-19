@@ -491,7 +491,7 @@ class InventoryApp {
         }
     }
 
-    // Show image preview with barcode detection
+    // Show image preview with barcode detection and rotation
     async showImagePreview(imageData) {
         const modal = document.createElement('div');
         modal.style.cssText = `
@@ -500,8 +500,22 @@ class InventoryApp {
             justify-content: center; z-index: 10000;
         `;
 
+        let currentRotation = 0;
+
         const closeModal = () => {
             modal.remove();
+        };
+
+        const rotateImage = () => {
+            currentRotation = (currentRotation + 90) % 360;
+            const imgElement = document.getElementById('preview-image');
+            imgElement.style.transform = `rotate(${currentRotation}deg)`;
+            console.log('Image rotated:', currentRotation, 'degrees');
+
+            // Retry barcode detection after rotation
+            setTimeout(() => {
+                this.detectBarcodeFromImage(imageData, currentRotation);
+            }, 300);
         };
 
         const handleUseCode = () => {
@@ -527,7 +541,13 @@ class InventoryApp {
         modal.innerHTML = `
             <div style="background: white; padding: 20px; border-radius: 10px; max-width: 95%; max-width: 90vw; text-align: center; max-height: 90vh; overflow-y: auto;">
                 <h2>Captured Photo</h2>
-                <img src="${imageData}" id="preview-image" style="width: 100%; max-width: 500px; border-radius: 8px; margin: 15px 0; max-height: 50vh; object-fit: contain;">
+                <img src="${imageData}" id="preview-image" style="width: 100%; max-width: 500px; border-radius: 8px; margin: 15px 0; max-height: 50vh; object-fit: contain; transition: transform 0.3s;">
+
+                <div style="display: flex; gap: 8px; margin-bottom: 12px; justify-content: center;">
+                    <button id="rotate-btn" style="padding: 8px 12px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600; font-size: 12px;">
+                        🔄 Rotate Photo
+                    </button>
+                </div>
 
                 <div id="barcode-status" style="font-size: 14px; color: #666; margin: 12px 0; padding: 12px; background: #f0f0f0; border-radius: 6px;">
                     ⏳ Scanning for barcode/QR code...
@@ -560,6 +580,7 @@ class InventoryApp {
         document.body.appendChild(modal);
 
         // Attach event listeners
+        document.getElementById('rotate-btn').addEventListener('click', () => rotateImage());
         document.getElementById('retake-btn').addEventListener('click', () => handleRetake());
         document.getElementById('use-code-btn').addEventListener('click', () => handleUseCode());
         document.getElementById('captured-barcode').addEventListener('keypress', (e) => {
@@ -567,31 +588,61 @@ class InventoryApp {
         });
 
         // Perform barcode detection
-        await this.detectBarcodeFromImage(imageData);
+        await this.detectBarcodeFromImage(imageData, 0);
 
         // Focus on input
         setTimeout(() => {
             document.getElementById('captured-barcode').focus();
         }, 100);
 
-        console.log('Image preview modal created with barcode detection');
+        console.log('Image preview modal created with rotation and barcode detection');
     }
 
-    // Detect barcode/QR code from image using html5-qrcode
-    async detectBarcodeFromImage(imageData) {
+    // Detect barcode/QR code from image
+    async detectBarcodeFromImage(imageData, rotation = 0) {
         try {
             const statusDiv = document.getElementById('barcode-status');
             const resultDiv = document.getElementById('barcode-result');
             const codeInput = document.getElementById('captured-barcode');
 
-            console.log('Starting barcode detection...');
+            console.log('Starting barcode detection (rotation: ' + rotation + 'deg)...');
 
-            // Create temporary image element for detection
+            // Create image from data URL
             const img = new Image();
+            img.crossOrigin = 'anonymous';
+
             img.onload = async () => {
                 try {
-                    // Use html5-qrcode to detect barcode from image
-                    const detectedCodes = await Html5Qrcode.scanFile(imageData, true);
+                    // Create canvas to potentially rotate the image for scanning
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+
+                    if (rotation !== 0) {
+                        // Apply rotation for detection
+                        const radians = (rotation * Math.PI) / 180;
+                        const cos = Math.cos(radians);
+                        const sin = Math.sin(radians);
+
+                        const newWidth = Math.abs(img.width * cos) + Math.abs(img.height * sin);
+                        const newHeight = Math.abs(img.width * sin) + Math.abs(img.height * cos);
+
+                        canvas.width = newWidth;
+                        canvas.height = newHeight;
+
+                        ctx.translate(newWidth / 2, newHeight / 2);
+                        ctx.rotate(radians);
+                        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+                    } else {
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        ctx.drawImage(img, 0, 0);
+                    }
+
+                    // Get canvas data URL
+                    const rotatedImageData = canvas.toDataURL('image/jpeg', 0.9);
+
+                    // Try html5-qrcode detection
+                    const detectedCodes = await Html5Qrcode.scanFile(rotatedImageData, true);
 
                     if (detectedCodes && detectedCodes.length > 0) {
                         const primaryCode = detectedCodes[0].decodedText;
@@ -602,31 +653,27 @@ class InventoryApp {
                         document.getElementById('detected-code-display').textContent = primaryCode;
                         codeInput.value = primaryCode;
                     } else {
-                        statusDiv.innerHTML = `
-                            ⚠️ No barcode/QR detected in image<br>
-                            <small>Please enter the code manually or retake photo</small>
-                        `;
-                        resultDiv.style.display = 'none';
+                        throw new Error('No barcode detected');
                     }
                 } catch (err) {
-                    console.log('Barcode detection note:', err.message);
+                    console.log('Detection attempt ' + rotation + 'deg:', err.message);
                     statusDiv.innerHTML = `
-                        ⚠️ No clear barcode/QR detected<br>
-                        <small>Please enter the code manually or retake photo</small>
+                        ⚠️ No barcode/QR detected<br>
+                        <small>Try rotating with 🔄 button or enter code manually</small>
                     `;
                     resultDiv.style.display = 'none';
                 }
             };
+
             img.src = imageData;
 
         } catch (err) {
             console.error('Barcode Detection Error:', err);
             const statusDiv = document.getElementById('barcode-status');
             statusDiv.innerHTML = `
-                ⚠️ Detection failed<br>
+                ⚠️ Detection error<br>
                 <small>Please enter the barcode manually</small>
             `;
-            document.getElementById('barcode-result').style.display = 'none';
         }
     }
 
