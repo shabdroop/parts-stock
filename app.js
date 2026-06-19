@@ -165,37 +165,59 @@ class InventoryApp {
     // Fetch CSV from backend server
     async fetchCSVFromServer(serverUrl) {
         try {
-            console.log(`Fetching CSV from: ${serverUrl}/api/download`);
+            const apiUrl = `${serverUrl}/api/download`;
+            console.log(`Fetching parts from: ${apiUrl}`);
 
-            const response = await fetch(`${serverUrl}/api/download`, {
+            const response = await fetch(apiUrl, {
                 method: 'GET',
                 headers: {
-                    'Accept': 'text/csv'
+                    'Accept': 'text/csv',
+                    'Content-Type': 'text/csv'
                 },
                 mode: 'cors'
             });
 
+            console.log(`Response status: ${response.status}`);
+
             if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Server error: ${response.status} - ${errorText || 'CSV not available'}`);
+                let errorText = '';
+                try {
+                    errorText = await response.text();
+                    console.log('Error response:', errorText);
+                } catch (e) {
+                    errorText = 'Unable to read error';
+                }
+                throw new Error(`Server error: ${response.status} - ${errorText || 'File not found. Upload a CSV or Excel file to admin server first.'}`);
             }
 
             const csvText = await response.text();
+            console.log(`Received ${csvText.length} bytes of data`);
 
             if (!csvText || csvText.trim().length === 0) {
-                throw new Error('CSV file is empty');
+                throw new Error('CSV file is empty. Please upload a valid file to admin server.');
             }
 
             Papa.parse(csvText, {
                 header: true,
+                skipEmptyLines: true,
+                dynamicTyping: false,
                 complete: async (results) => {
+                    console.log(`Parsed ${results.data.length} rows from CSV`);
+
                     if (!results.data || results.data.length === 0) {
                         this.showAlert('CSV has no data rows', 'error');
                         return;
                     }
 
-                    await this.saveParts(results.data);
-                    const validParts = results.data.filter(p => p['Part Number'] && p['Part Name']).length;
+                    // Filter out completely empty rows
+                    const validData = results.data.filter(row =>
+                        row['Part Number'] || row['Part Name'] || Object.values(row).some(v => v)
+                    );
+
+                    console.log(`Found ${validData.length} valid data rows`);
+
+                    await this.saveParts(validData);
+                    const validParts = validData.filter(p => p['Part Number'] && p['Part Name']).length;
 
                     document.getElementById('file-status').textContent = `✓ Fetched from server! Imported ${validParts} parts`;
                     document.getElementById('file-status').style.display = 'block';
@@ -204,12 +226,12 @@ class InventoryApp {
                 },
                 error: (error) => {
                     console.error('CSV Parse Error:', error);
-                    this.showAlert('Error parsing CSV: ' + error.message, 'error');
+                    this.showAlert('Error parsing CSV: ' + error.message + '\n\nMake sure the file has "Part Number" and "Part Name" columns', 'error');
                 }
             });
         } catch (error) {
             console.error('Fetch Error:', error);
-            this.showAlert(`✗ Error: ${error.message}\n\nTo use admin server:\n1. Go to: https://web-production-85db8e.up.railway.app\n2. Upload your CSV file\n3. Then click "Fetch from Admin Server" again\n\nOr use "Manual Entry" option below`, 'error');
+            this.showAlert(`✗ Error: ${error.message}\n\nTo use admin server:\n1. Go to: https://web-production-85db8e.up.railway.app\n2. Upload your Excel or CSV file\n3. Then click "Fetch from Admin Server" again\n\nOr use "Manual Entry" option below`, 'error');
         }
     }
 
@@ -259,13 +281,17 @@ class InventoryApp {
             const video = document.getElementById('scanner-preview');
             video.style.display = 'block';
 
-            this.showAlert('📷 Requesting camera access... Point at barcode', 'info');
+            this.showAlert('📷 Requesting camera access... Please allow when prompted', 'info');
+
+            console.log('html5-qrcode library available:', typeof Html5Qrcode !== 'undefined');
 
             // Create html5-qrcode scanner
             this.html5QrcodeScanner = new Html5Qrcode('scanner-preview');
 
-            console.log('Getting video input devices...');
+            console.log('Getting available cameras...');
             const devices = await Html5Qrcode.getCameras();
+
+            console.log('Devices found:', devices);
 
             if (!devices || devices.length === 0) {
                 throw new Error('No camera found on device');
@@ -273,6 +299,7 @@ class InventoryApp {
 
             // Prefer back camera (environment facing) over front camera
             let selectedDeviceId = devices[0].id;
+            let selectedLabel = devices[0].label || 'Camera 1';
 
             // Try to find back camera
             const backCamera = devices.find(device =>
@@ -280,42 +307,51 @@ class InventoryApp {
             );
             if (backCamera) {
                 selectedDeviceId = backCamera.id;
-                console.log('Using back camera:', selectedDeviceId);
+                selectedLabel = backCamera.label;
+                console.log('Using back camera:', selectedDeviceId, selectedLabel);
             } else {
-                console.log('Back camera not found, using first available camera:', selectedDeviceId);
+                console.log('Back camera not found, using first available:', selectedDeviceId, selectedLabel);
             }
 
-            this.showAlert('✓ Camera ready! Scanning for barcodes...', 'success');
+            this.showAlert(`✓ Camera ready (${selectedLabel})! Scanning for barcodes...`, 'success');
 
-            // Start scanning with back camera preference
+            // Start scanning
+            console.log('Starting camera with device ID:', selectedDeviceId);
+
             await this.html5QrcodeScanner.start(
                 selectedDeviceId,
                 {
                     fps: 10,
-                    qrbox: { width: 250, height: 250 },
-                    facingMode: 'environment'
+                    qrbox: { width: 250, height: 250 }
                 },
                 (decodedText, decodedResult) => {
-                    console.log('Barcode scanned:', decodedText);
+                    console.log('Barcode/QR scanned:', decodedText);
                     this.handleBarcodeScan(decodedText);
                 },
                 (errorMessage) => {
                     // Ignore scanning errors (no barcode in frame)
+                    // console.log('Scanning...', errorMessage);
                 }
             );
 
             this.isScanning = true;
+            console.log('Camera scanning started successfully');
 
         } catch (err) {
             console.error('Camera error:', err);
+            console.error('Error stack:', err.stack);
 
             let errorMsg = '';
-            if (err.message.includes('Camera not found') || err.message.includes('No cameras found')) {
-                errorMsg = '❌ No camera found\n\nUse manual entry instead:\n1. Scroll down to "Manual Entry"\n2. Enter part number\n3. Click "Lookup Part"';
-            } else if (err.message.includes('Permission denied') || err.message.includes('permission')) {
-                errorMsg = '❌ Camera permission denied\n\nGo to Settings → Apps → [Browser] → Permissions → Camera → Allow\n\nOr use manual entry below';
+            const errMsg = err.message ? err.message.toLowerCase() : '';
+
+            if (errMsg.includes('no cameras') || errMsg.includes('no camera') || errMsg.includes('camera not found')) {
+                errorMsg = '❌ No camera found on device\n\nUse manual entry instead:\n1. Scroll down to "Manual Entry"\n2. Enter part number\n3. Click "Lookup Part"';
+            } else if (errMsg.includes('permission') || errMsg.includes('denied')) {
+                errorMsg = '❌ Camera permission denied\n\n📱 Android: Go to Settings → Apps → [Browser] → Permissions → Camera → Allow\n🖥️ Desktop: Check browser camera permissions\n\nOr use manual entry below';
+            } else if (errMsg.includes('NotAllowedError')) {
+                errorMsg = '❌ Camera access blocked\n\nCheck your browser camera permissions and try again';
             } else {
-                errorMsg = `❌ ${err.message || 'Camera access failed'}\n\nUse manual entry as alternative`;
+                errorMsg = `❌ ${err.message || 'Camera access failed'}\n\nTroubleshooting:\n1. Check camera permissions\n2. Try a different browser\n3. Use manual entry as fallback`;
             }
 
             this.showAlert(errorMsg, 'error');
@@ -554,6 +590,50 @@ class InventoryApp {
         document.getElementById('edit-modal').classList.remove('show');
         document.getElementById('edit-form').reset();
         this.currentEditingId = null;
+    }
+
+    // Export to Excel
+    async exportExcel() {
+        return new Promise((resolve) => {
+            const tx = this.db.transaction('records', 'readonly');
+            const store = tx.objectStore('records');
+            const request = store.getAll();
+
+            request.onsuccess = () => {
+                const records = request.result;
+
+                if (records.length === 0) {
+                    alert('No records to export');
+                    resolve();
+                    return;
+                }
+
+                // Prepare data for Excel
+                const data = records.map(r => ({
+                    'Timestamp': r.timestamp,
+                    'Part Number': r.partNumber,
+                    'Part Name': r.partName,
+                    'Physical Count': r.physicalCount,
+                    'Location': r.location
+                }));
+
+                // Create workbook and worksheet
+                const worksheet = XLSX.utils.json_to_sheet(data);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventory');
+
+                // Set column widths for better readability
+                const colWidths = [25, 15, 25, 15, 15];
+                worksheet['!cols'] = colWidths.map(width => ({ wch: width }));
+
+                // Generate Excel file
+                const timestamp = new Date().toISOString().slice(0, 10);
+                XLSX.writeFile(workbook, `inventory-${timestamp}.xlsx`);
+
+                this.showAlert('✓ Inventory exported to Excel', 'success');
+                resolve();
+            };
+        });
     }
 
     // Export to CSV

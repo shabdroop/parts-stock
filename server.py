@@ -67,16 +67,23 @@ def upload_file():
 
             excel_data = file.read()
             excel_file = io.BytesIO(excel_data)
-            workbook = openpyxl.load_workbook(excel_file)
-            worksheet = workbook.active
 
-            # Convert Excel to CSV
-            with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
-                for row in worksheet.iter_rows(values_only=True):
-                    writer.writerow(row)
+            try:
+                workbook = openpyxl.load_workbook(excel_file, data_only=True)
+                worksheet = workbook.active
 
-            row_count = worksheet.max_row - 1
+                # Convert Excel to CSV with proper quoting
+                with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
+                    writer = csv.writer(csvfile, quoting=csv.QUOTE_ALL)
+                    for idx, row in enumerate(worksheet.iter_rows(values_only=True)):
+                        # Skip completely empty rows
+                        if any(cell is not None for cell in row):
+                            writer.writerow(row)
+
+                row_count = worksheet.max_row - 1
+            except Exception as excel_err:
+                os.remove(filepath)
+                return jsonify({'error': f'Error reading Excel file: {str(excel_err)}'}), 400
         else:
             # Handle CSV file
             file.save(filepath)
