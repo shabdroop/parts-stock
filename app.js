@@ -407,7 +407,7 @@ class InventoryApp {
             this.html5QrcodeScanner = new Html5Qrcode('scanner-preview');
 
             await this.html5QrcodeScanner.start(
-                { facingMode: { ideal: 'environment' } },
+                { facingMode: 'environment' },
                 config,
                 async (decodedText) => {
                     // SUCCESS - Barcode/QR detected
