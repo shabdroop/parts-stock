@@ -401,13 +401,44 @@ class InventoryApp {
                 qrbox: { width: 250, height: 250 },  // Scan center region only
                 aspectRatio: 1.77,
                 disableFlip: false,  // Try both normal and inverted
-                rememberLastUsedCamera: true
+                rememberLastUsedCamera: true,
+                showTorchButton: true,
+                showZoomButton: true
             };
 
             this.html5QrcodeScanner = new Html5Qrcode('scanner-preview');
 
+            // Use true to let html5-qrcode handle camera selection with environment preference
+            const cameraId = await Html5Qrcode.getCameras()
+                .then(devices => {
+                    // Prefer back camera (environment)
+                    let selectedCameraId = null;
+                    for (let device of devices) {
+                        if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) {
+                            selectedCameraId = device.id;
+                            break;
+                        }
+                    }
+                    return selectedCameraId || (devices.length > 0 ? devices[0].id : null);
+                })
+                .catch(err => {
+                    console.log('Camera selection note:', err);
+                    return null;
+                });
+
+            if (!cameraId) {
+                this.showAlert('⚠️ Could not auto-select camera, using default', 'info');
+            }
+
+            const constraints = {
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            };
+
             await this.html5QrcodeScanner.start(
-                { facingMode: 'environment' },
+                cameraId || true,  // Use selected camera or let library choose
                 config,
                 async (decodedText) => {
                     // SUCCESS - Barcode/QR detected
@@ -721,11 +752,17 @@ class InventoryApp {
             // Stop continuous scanner
             if (this.html5QrcodeScanner) {
                 try {
-                    await this.html5QrcodeScanner.stop();
+                    // Check if scanner is running before stopping
+                    const state = this.html5QrcodeScanner.getState();
+                    if (state === 2) {  // 2 = SCANNING state
+                        await this.html5QrcodeScanner.stop();
+                    }
                     this.html5QrcodeScanner = null;
                     console.log('QR scanner stopped');
                 } catch (err) {
-                    console.error('Error stopping scanner:', err);
+                    console.log('Scanner stop note:', err.message);
+                    // Scanner might not be running, that's okay
+                    this.html5QrcodeScanner = null;
                 }
             }
 
