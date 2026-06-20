@@ -458,8 +458,13 @@ class InventoryApp {
                     return;  // Video not ready yet
                 }
 
-                const ctx = canvas.getContext('2d');
+                const ctx = canvas.getContext('2d', { alpha: false });  // Optimize for opaque images
                 ctx.drawImage(video, 0, 0);
+
+                // Log every Nth frame for debugging
+                if (frameCount % 10 === 0) {
+                    console.log('Frame ' + frameCount + ' captured: ' + canvas.width + 'x' + canvas.height);
+                }
 
                 // Try native BarcodeDetector API first (Chrome Android with ML Kit)
                 if ('BarcodeDetector' in window) {
@@ -491,7 +496,7 @@ class InventoryApp {
                     try {
                         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-                        // Try with inversion attempts enabled
+                        // Try jsQR with both inversion attempts
                         const code = jsQR(imageData.data, imageData.width, imageData.height, {
                             inversionAttempts: 'attemptBoth'  // Try both normal and inverted
                         });
@@ -503,6 +508,23 @@ class InventoryApp {
                             await this.stopScanning();
                             await this.handleBarcodeScan(code.data);
                             return;
+                        }
+
+                        // If not found, try with enhanced contrast (for poor lighting)
+                        if (frameCount % 20 === 0) {  // Try every 20 frames to save CPU
+                            const enhancedImageData = this.enhanceImageContrast(imageData);
+                            const enhancedCode = jsQR(enhancedImageData.data, enhancedImageData.width, enhancedImageData.height, {
+                                inversionAttempts: 'attemptBoth'
+                            });
+
+                            if (enhancedCode && enhancedCode.data) {
+                                console.log('✓ QR code detected (jsQR+enhanced) at frame ' + frameCount + ':', enhancedCode.data);
+                                this.showAlert(`✓ Detected: ${enhancedCode.data}`, 'success');
+                                this.isScanning = false;
+                                await this.stopScanning();
+                                await this.handleBarcodeScan(enhancedCode.data);
+                                return;
+                            }
                         }
                     } catch (err) {
                         console.error('jsQR error:', err.message);
@@ -518,6 +540,34 @@ class InventoryApp {
         }, 1000 / fps);
 
         console.log('Frame grabbing started at ' + fps + ' FPS');
+    }
+
+    // Enhance image contrast for better QR detection in poor lighting
+    enhanceImageContrast(imageData) {
+        const data = new Uint8ClampedArray(imageData.data);
+
+        // Calculate average brightness
+        let total = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+            total += brightness;
+        }
+        const average = total / (data.length / 4);
+
+        // Enhance contrast around average
+        const enhancement = 1.5;  // Contrast multiplier
+        for (let i = 0; i < data.length; i += 4) {
+            const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+            const adjusted = (brightness - average) * enhancement + average;
+            const clipped = Math.max(0, Math.min(255, adjusted));
+
+            data[i] = clipped;      // R
+            data[i + 1] = clipped;  // G
+            data[i + 2] = clipped;  // B
+            // Keep alpha unchanged
+        }
+
+        return new ImageData(data, imageData.width, imageData.height);
     }
 
     // Handle camera errors
