@@ -1356,6 +1356,17 @@ class InventoryApp {
                     return;
                 }
 
+                // Ask user for filename
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const defaultName = `inventory-${timestamp}`;
+                const fileName = prompt('Enter filename for Excel export:', defaultName);
+
+                if (!fileName) {
+                    // User cancelled
+                    resolve();
+                    return;
+                }
+
                 // Prepare data for Excel
                 const data = records.map(r => ({
                     'Timestamp': r.timestamp,
@@ -1375,11 +1386,11 @@ class InventoryApp {
                 const colWidths = [25, 15, 25, 15, 15];
                 worksheet['!cols'] = colWidths.map(width => ({ wch: width }));
 
-                // Generate Excel file
-                const timestamp = new Date().toISOString().slice(0, 10);
-                XLSX.writeFile(workbook, `inventory-${timestamp}.xlsx`);
+                // Use custom filename (add .xlsx if not included)
+                const finalName = fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`;
+                XLSX.writeFile(workbook, finalName);
 
-                this.showAlert('✓ Inventory exported to Excel', 'success');
+                this.showAlert(`✓ Inventory exported to: ${finalName}`, 'success');
                 resolve();
             };
         });
@@ -1401,6 +1412,17 @@ class InventoryApp {
                     return;
                 }
 
+                // Ask user for filename
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const defaultName = `inventory-${timestamp}`;
+                const fileName = prompt('Enter filename for CSV export:', defaultName);
+
+                if (!fileName) {
+                    // User cancelled
+                    resolve();
+                    return;
+                }
+
                 const csv = Papa.unparse(records.map(r => ({
                     'Timestamp': r.timestamp,
                     'Part Number': r.partNumber,
@@ -1414,16 +1436,17 @@ class InventoryApp {
                 const link = document.createElement('a');
                 const url = URL.createObjectURL(blob);
 
-                const timestamp = new Date().toISOString().slice(0, 10);
+                // Use custom filename (add .csv if not included)
+                const finalName = fileName.endsWith('.csv') ? fileName : `${fileName}.csv`;
                 link.setAttribute('href', url);
-                link.setAttribute('download', `inventory-${timestamp}.csv`);
+                link.setAttribute('download', finalName);
                 link.style.visibility = 'hidden';
 
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
 
-                this.showAlert('✓ Inventory exported to CSV', 'success');
+                this.showAlert(`✓ Inventory exported to: ${finalName}`, 'success');
                 resolve();
             };
         });
