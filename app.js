@@ -432,12 +432,20 @@ class InventoryApp {
     // Grab frames from video and scan them
     startFrameGrabbing(video) {
         let isProcessing = false;
-        const fps = 2;  // Safe frame rate for Android
+        let frameCount = 0;
+        const fps = 5;  // Increased to 5 FPS for better detection (safe on all devices)
+
+        // Check if jsQR is available
+        if (typeof jsQR === 'undefined') {
+            console.warn('jsQR not loaded! QR code detection will not work.');
+            this.showAlert('⚠️ QR detection library not loaded. Using manual entry as fallback.', 'warning');
+        }
 
         this.frameGrabbingInterval = setInterval(async () => {
             if (!this.isScanning || isProcessing) return;
 
             isProcessing = true;
+            frameCount++;
 
             try {
                 // Create canvas from current video frame
@@ -454,7 +462,7 @@ class InventoryApp {
                 ctx.drawImage(video, 0, 0);
 
                 // Try native BarcodeDetector API first (Chrome Android with ML Kit)
-                if ('BarcodeDetector' in window && !this.barcodeDetectorWarned) {
+                if ('BarcodeDetector' in window) {
                     try {
                         const detector = new BarcodeDetector({
                             formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e']
@@ -463,7 +471,7 @@ class InventoryApp {
 
                         if (barcodes && barcodes.length > 0) {
                             const code = barcodes[0].rawValue;
-                            console.log('Barcode detected (Native API):', code);
+                            console.log('✓ Barcode detected (Native API) at frame ' + frameCount + ':', code);
                             this.showAlert(`✓ Detected: ${code}`, 'success');
                             this.isScanning = false;
                             await this.stopScanning();
@@ -472,22 +480,33 @@ class InventoryApp {
                         }
                     } catch (err) {
                         // Native API not available or failed, fall through to jsQR
-                        console.log('Native BarcodeDetector note:', err.message);
+                        if (frameCount === 1) {
+                            console.log('Native BarcodeDetector not available, using jsQR fallback');
+                        }
                     }
                 }
 
                 // Fallback: Use jsQR for QR codes
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                    inversionAttempts: 'dontInvert'
-                });
+                if (typeof jsQR !== 'undefined') {
+                    try {
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-                if (code && code.data) {
-                    console.log('QR code detected (jsQR):', code.data);
-                    this.showAlert(`✓ Detected: ${code.data}`, 'success');
-                    this.isScanning = false;
-                    await this.stopScanning();
-                    await this.handleBarcodeScan(code.data);
+                        // Try with inversion attempts enabled
+                        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                            inversionAttempts: 'attemptBoth'  // Try both normal and inverted
+                        });
+
+                        if (code && code.data) {
+                            console.log('✓ QR code detected (jsQR) at frame ' + frameCount + ':', code.data);
+                            this.showAlert(`✓ Detected: ${code.data}`, 'success');
+                            this.isScanning = false;
+                            await this.stopScanning();
+                            await this.handleBarcodeScan(code.data);
+                            return;
+                        }
+                    } catch (err) {
+                        console.error('jsQR error:', err.message);
+                    }
                 }
 
             } catch (err) {
@@ -742,7 +761,7 @@ class InventoryApp {
                         try {
                             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                             const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
-                                inversionAttempts: 'dontInvert'
+                                inversionAttempts: 'attemptBoth'  // Try both normal and inverted
                             });
                             if (qrCode && qrCode.data) {
                                 detectedCode = qrCode.data;
