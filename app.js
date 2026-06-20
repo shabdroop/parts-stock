@@ -1289,7 +1289,7 @@ class InventoryApp {
                     `;
                 } else {
                     let html = '<table class="records-table"><thead><tr>';
-                    html += '<th>Timestamp</th><th>Part #</th><th>Part Name</th><th>Count</th><th>Location</th><th>Action</th></tr></thead><tbody>';
+                    html += '<th>Timestamp</th><th>Part #</th><th>Part Name</th><th>Count</th><th>Location</th><th>Remarks</th><th>Action</th></tr></thead><tbody>';
 
                     records.forEach(record => {
                         html += `<tr>
@@ -1298,6 +1298,7 @@ class InventoryApp {
                             <td>${record.partName}</td>
                             <td>${record.physicalCount}</td>
                             <td>${record.location}</td>
+                            <td>${record.remarks || '—'}</td>
                             <td><button class="btn-primary action-btn" onclick="app.openEditModal(${record.id})">Edit</button></td>
                         </tr>`;
                     });
