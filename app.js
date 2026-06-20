@@ -69,6 +69,7 @@ class InventoryApp {
                     const recordStore = db.createObjectStore('records', { keyPath: 'id', autoIncrement: true });
                     recordStore.createIndex('timestamp', 'timestamp');
                     recordStore.createIndex('partNumber', 'partNumber');
+                    recordStore.createIndex('remarks', 'remarks');
                 }
             };
         });
@@ -709,8 +710,11 @@ class InventoryApp {
                 </p>
                 <div style="display: flex; gap: 10px; margin: 15px 0;">
                     <input type="text" placeholder="e.g., 123456789" id="captured-barcode"
-                           style="flex: 1; padding: 12px; border: 2px solid #3498db; border-radius: 5px; font-size: 16px;">
+                           style="flex: 1; padding: 12px; border: 2px solid #3498db; border-radius: 5px; font-size: 14px;">
                 </div>
+                <button id="trim-btn" style="width: 100%; padding: 10px; margin-bottom: 12px; background: #9b59b6; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600; font-size: 13px;">
+                    ✂️ Trim QR (Extract Part #)
+                </button>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                     <button id="retry-btn" style="flex: 1; min-width: 120px; padding: 12px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">
                         🔄 Retry Scanner
@@ -728,10 +732,85 @@ class InventoryApp {
         modal.id = 'barcode-modal';
         document.body.appendChild(modal);
 
+        const handleTrim = () => {
+            const codeInput = document.getElementById('captured-barcode');
+            const fullText = codeInput.value.trim();
+
+            if (!fullText) {
+                alert('Please enter or detect a code first');
+                return;
+            }
+
+            // Show trim dialog with options
+            const trimDialog = document.createElement('div');
+            trimDialog.style.cssText = `
+                position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                background: white; padding: 20px; border-radius: 10px;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                z-index: 10001; max-width: 500px; text-align: left;
+            `;
+
+            // Parse QR data (format: field1#field2#field3#...)
+            const fields = fullText.split('#').filter(f => f.trim().length > 0);
+
+            let optionsHtml = '<p style="font-weight: bold; margin-bottom: 12px;">Multiple fields detected. Select part number:</p>';
+            optionsHtml += '<div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; padding: 10px;">';
+
+            fields.forEach((field, idx) => {
+                const displayText = field.length > 50 ? field.substring(0, 47) + '...' : field;
+                optionsHtml += `
+                    <div style="padding: 8px; margin: 4px 0; background: #f5f5f5; border-radius: 4px; cursor: pointer; border-left: 3px solid #3498db;"
+                         onclick="document.getElementById('trim-select-${idx}').checked = true;">
+                        <input type="radio" name="trim-select" id="trim-select-${idx}" value="${field}" style="cursor: pointer;">
+                        <label for="trim-select-${idx}" style="cursor: pointer; margin-left: 5px; display: inline;">
+                            ${displayText}
+                        </label>
+                    </div>
+                `;
+            });
+
+            optionsHtml += '</div>';
+
+            trimDialog.innerHTML = `
+                <h3 style="margin-top: 0;">Extract Part Number</h3>
+                ${optionsHtml}
+                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                    <button id="trim-confirm" style="flex: 1; padding: 10px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">
+                        ✓ Use Selected
+                    </button>
+                    <button id="trim-cancel" style="flex: 1; padding: 10px; background: #95a5a6; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">
+                        ✕ Cancel
+                    </button>
+                </div>
+            `;
+
+            document.body.appendChild(trimDialog);
+
+            document.getElementById('trim-confirm').onclick = () => {
+                const selected = document.querySelector('input[name="trim-select"]:checked');
+                if (selected) {
+                    codeInput.value = selected.value;
+                    trimDialog.remove();
+                    // Auto-perform lookup after trim
+                    setTimeout(() => handleUseCode(), 100);
+                }
+            };
+
+            document.getElementById('trim-cancel').onclick = () => {
+                trimDialog.remove();
+            };
+
+            // Select first option by default
+            if (fields.length > 0) {
+                document.getElementById('trim-select-0').checked = true;
+            }
+        };
+
         // Attach event listeners
         document.getElementById('rotate-btn').addEventListener('click', () => rotateImage());
         document.getElementById('retry-btn').addEventListener('click', () => handleRetry());
         document.getElementById('retake-btn').addEventListener('click', () => handleRetake());
+        document.getElementById('trim-btn').addEventListener('click', () => handleTrim());
         document.getElementById('use-code-btn').addEventListener('click', () => handleUseCode());
         document.getElementById('captured-barcode').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') handleUseCode();
@@ -963,19 +1042,50 @@ class InventoryApp {
             document.getElementById('part-name').value = partName;
             document.getElementById('physical-count').value = '';
             document.getElementById('location').value = '';
+            document.getElementById('remarks').value = '';
 
             form.style.display = 'block';
             document.getElementById('physical-count').focus();
         } else {
+            // Part not found - offer to add manually
             resultDiv.innerHTML = `
                 <div class="scan-result error">
                     ✗ Part number not found in database: "${partNumber}"
-                    <br><small>Make sure it matches exactly (e.g., SKU-001)</small>
+                </div>
+                <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: 12px; margin-top: 12px;">
+                    <strong>Want to add this part manually?</strong><br>
+                    <small>Click button below to create a new entry with this part number.</small><br>
+                    <button onclick="app.addNewPartManually('${partNumber}')" style="margin-top: 10px; padding: 8px 16px; background: #ffc107; color: #333; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">
+                        ➕ Add New Part
+                    </button>
                 </div>
             `;
             resultDiv.style.display = 'block';
             form.style.display = 'none';
         }
+    }
+
+    // Add new part manually (when not found in database)
+    addNewPartManually(partNumber) {
+        const form = document.getElementById('scan-form');
+        const resultDiv = document.getElementById('scan-result');
+
+        resultDiv.innerHTML = `
+            <div class="scan-result" style="background: #d1ecf1; border-left-color: #17a2b8;">
+                ℹ️ Adding new part: <strong>${partNumber}</strong>
+            </div>
+        `;
+
+        document.getElementById('part-number').value = partNumber;
+        document.getElementById('part-name').value = '';  // User must enter part name
+        document.getElementById('physical-count').value = '';
+        document.getElementById('location').value = '';
+        document.getElementById('remarks').value = 'Part Not in System Data';  // Auto-populate remarks
+
+        form.style.display = 'block';
+        document.getElementById('part-name').focus();  // Focus on part name since it's required
+
+        this.showAlert('📝 Enter part name and other details to add this new part', 'info');
     }
 
     // Save record
@@ -984,9 +1094,10 @@ class InventoryApp {
         const partName = document.getElementById('part-name').value;
         const count = document.getElementById('physical-count').value;
         const location = document.getElementById('location').value;
+        const remarks = document.getElementById('remarks').value || '';
 
         if (!partNumber || !partName || !count || !location) {
-            alert('Please fill all fields');
+            alert('Please fill all required fields (marked with *)');
             return;
         }
 
@@ -995,7 +1106,8 @@ class InventoryApp {
             partNumber: partNumber,
             partName: partName,
             physicalCount: parseInt(count),
-            location: location
+            location: location,
+            remarks: remarks
         };
 
         return new Promise((resolve) => {
@@ -1025,6 +1137,7 @@ class InventoryApp {
         const partName = document.getElementById('edit-part-name').value;
         const count = document.getElementById('edit-physical-count').value;
         const location = document.getElementById('edit-location').value;
+        const remarks = document.getElementById('edit-remarks').value || '';
 
         if (!partName || !count || !location) {
             alert('Please fill all fields');
@@ -1041,6 +1154,7 @@ class InventoryApp {
                 record.partName = partName;
                 record.physicalCount = parseInt(count);
                 record.location = location;
+                record.remarks = remarks;
 
                 store.put(record);
             };
@@ -1130,6 +1244,7 @@ class InventoryApp {
                 document.getElementById('edit-part-name').value = record.partName;
                 document.getElementById('edit-physical-count').value = record.physicalCount;
                 document.getElementById('edit-location').value = record.location;
+                document.getElementById('edit-remarks').value = record.remarks || '';
 
                 document.getElementById('edit-modal').classList.add('show');
                 resolve();
@@ -1166,7 +1281,8 @@ class InventoryApp {
                     'Part Number': r.partNumber,
                     'Part Name': r.partName,
                     'Physical Count': r.physicalCount,
-                    'Location': r.location
+                    'Location': r.location,
+                    'Remarks': r.remarks || ''
                 }));
 
                 // Create workbook and worksheet
@@ -1209,7 +1325,8 @@ class InventoryApp {
                     'Part Number': r.partNumber,
                     'Part Name': r.partName,
                     'Physical Count': r.physicalCount,
-                    'Location': r.location
+                    'Location': r.location,
+                    'Remarks': r.remarks || ''
                 })));
 
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
