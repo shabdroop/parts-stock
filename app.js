@@ -387,83 +387,118 @@ class InventoryApp {
         });
     }
 
-    // Start continuous video stream scanning (like UPI/Payment apps)
+    // Start mobile-optimized frame-grabbing scanner
     async startScanning() {
         try {
             const video = document.getElementById('scanner-preview');
             video.style.display = 'block';
 
-            this.showAlert('📷 Starting real-time scanner...', 'info');
+            this.showAlert('📷 Starting scanner...', 'info');
 
-            // Initialize html5-qrcode for continuous scanning
-            const config = {
-                fps: 10,  // Scan 10 frames per second (payment app standard)
-                qrbox: { width: 250, height: 250 },  // Scan center region only
-                aspectRatio: 1.77,
-                disableFlip: false,  // Try both normal and inverted
-                rememberLastUsedCamera: true,
-                showTorchButton: true,
-                showZoomButton: true
-            };
-
-            this.html5QrcodeScanner = new Html5Qrcode('scanner-preview');
-
-            // Use true to let html5-qrcode handle camera selection with environment preference
-            const cameraId = await Html5Qrcode.getCameras()
-                .then(devices => {
-                    // Prefer back camera (environment)
-                    let selectedCameraId = null;
-                    for (let device of devices) {
-                        if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) {
-                            selectedCameraId = device.id;
-                            break;
-                        }
-                    }
-                    return selectedCameraId || (devices.length > 0 ? devices[0].id : null);
-                })
-                .catch(err => {
-                    console.log('Camera selection note:', err);
-                    return null;
-                });
-
-            if (!cameraId) {
-                this.showAlert('⚠️ Could not auto-select camera, using default', 'info');
-            }
-
-            const constraints = {
+            // Request camera with moderate resolution for Android
+            const stream = await navigator.mediaDevices.getUserMedia({
                 video: {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                }
-            };
-
-            await this.html5QrcodeScanner.start(
-                cameraId || true,  // Use selected camera or let library choose
-                config,
-                async (decodedText) => {
-                    // SUCCESS - Barcode/QR detected
-                    console.log('Barcode detected:', decodedText);
-                    this.showAlert(`✓ Detected: ${decodedText}`, 'success');
-
-                    // Stop scanning
-                    await this.stopScanning();
-
-                    // Process the barcode
-                    await this.handleBarcodeScan(decodedText);
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: 'environment'
                 },
-                (errorMessage) => {
-                    // Continuous scanning expects many failures - just continue
-                    // Don't spam console logs
-                }
-            );
+                audio: false
+            });
 
+            video.srcObject = stream;
+            this.scanningStream = stream;
             this.isScanning = true;
-            this.showAlert('✓ Real-time QR/Barcode scanner active\n\n📍 Point camera at code', 'success');
+
+            // Log actual camera settings
+            const track = stream.getVideoTracks()[0];
+            const settings = track.getSettings ? track.getSettings() : {};
+            console.log('Camera active:', {
+                width: settings.width,
+                height: settings.height,
+                facingMode: settings.facingMode
+            });
+
+            // Start frame grabbing at safe rate for Android (2 FPS)
+            this.startFrameGrabbing(video);
+
+            this.showAlert('✓ Scanner active\n📍 Point camera at barcode/QR code', 'success');
 
         } catch (err) {
             console.error('Camera error:', err);
             this.handleCameraError(err);
         }
+    }
+
+    // Grab frames from video and scan them
+    startFrameGrabbing(video) {
+        let isProcessing = false;
+        const fps = 2;  // Safe frame rate for Android
+
+        this.frameGrabbingInterval = setInterval(async () => {
+            if (!this.isScanning || isProcessing) return;
+
+            isProcessing = true;
+
+            try {
+                // Create canvas from current video frame
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                if (canvas.width === 0 || canvas.height === 0) {
+                    isProcessing = false;
+                    return;  // Video not ready yet
+                }
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0);
+
+                // Try native BarcodeDetector API first (Chrome Android with ML Kit)
+                if ('BarcodeDetector' in window && !this.barcodeDetectorWarned) {
+                    try {
+                        const detector = new BarcodeDetector({
+                            formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e']
+                        });
+                        const barcodes = await detector.detect(canvas);
+
+                        if (barcodes && barcodes.length > 0) {
+                            const code = barcodes[0].rawValue;
+                            console.log('Barcode detected (Native API):', code);
+                            this.showAlert(`✓ Detected: ${code}`, 'success');
+                            this.isScanning = false;
+                            await this.stopScanning();
+                            await this.handleBarcodeScan(code);
+                            return;
+                        }
+                    } catch (err) {
+                        // Native API not available or failed, fall through to jsQR
+                        console.log('Native BarcodeDetector note:', err.message);
+                    }
+                }
+
+                // Fallback: Use jsQR for QR codes
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: 'dontInvert'
+                });
+
+                if (code && code.data) {
+                    console.log('QR code detected (jsQR):', code.data);
+                    this.showAlert(`✓ Detected: ${code.data}`, 'success');
+                    this.isScanning = false;
+                    await this.stopScanning();
+                    await this.handleBarcodeScan(code.data);
+                }
+
+            } catch (err) {
+                console.error('Frame scanning error:', err);
+                // Continue scanning despite errors
+            } finally {
+                isProcessing = false;
+            }
+        }, 1000 / fps);
+
+        console.log('Frame grabbing started at ' + fps + ' FPS');
     }
 
     // Handle camera errors
@@ -684,20 +719,45 @@ class InventoryApp {
                         ctx.drawImage(img, 0, 0);
                     }
 
-                    // Get canvas data URL
-                    const rotatedImageData = canvas.toDataURL('image/jpeg', 0.9);
+                    let detectedCode = null;
 
-                    // Try html5-qrcode detection
-                    const detectedCodes = await Html5Qrcode.scanFile(rotatedImageData, true);
+                    // Try native BarcodeDetector first (Chrome Android)
+                    if ('BarcodeDetector' in window) {
+                        try {
+                            const detector = new BarcodeDetector({
+                                formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e']
+                            });
+                            const barcodes = await detector.detect(canvas);
+                            if (barcodes && barcodes.length > 0) {
+                                detectedCode = barcodes[0].rawValue;
+                                console.log('Barcode detected (Native):', detectedCode);
+                            }
+                        } catch (err) {
+                            console.log('Native detector note:', err.message);
+                        }
+                    }
 
-                    if (detectedCodes && detectedCodes.length > 0) {
-                        const primaryCode = detectedCodes[0].decodedText;
-                        console.log('Barcode detected:', primaryCode);
+                    // Fallback: Try jsQR for QR codes
+                    if (!detectedCode && typeof jsQR !== 'undefined') {
+                        try {
+                            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                            const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
+                                inversionAttempts: 'dontInvert'
+                            });
+                            if (qrCode && qrCode.data) {
+                                detectedCode = qrCode.data;
+                                console.log('QR code detected (jsQR):', detectedCode);
+                            }
+                        } catch (err) {
+                            console.log('jsQR note:', err.message);
+                        }
+                    }
 
+                    if (detectedCode) {
                         statusDiv.style.display = 'none';
                         resultDiv.style.display = 'block';
-                        document.getElementById('detected-code-display').textContent = primaryCode;
-                        codeInput.value = primaryCode;
+                        document.getElementById('detected-code-display').textContent = detectedCode;
+                        codeInput.value = detectedCode;
                     } else {
                         throw new Error('No barcode detected');
                     }
@@ -749,21 +809,11 @@ class InventoryApp {
         this.isScanning = false;
 
         try {
-            // Stop continuous scanner
-            if (this.html5QrcodeScanner) {
-                try {
-                    // Check if scanner is running before stopping
-                    const state = this.html5QrcodeScanner.getState();
-                    if (state === 2) {  // 2 = SCANNING state
-                        await this.html5QrcodeScanner.stop();
-                    }
-                    this.html5QrcodeScanner = null;
-                    console.log('QR scanner stopped');
-                } catch (err) {
-                    console.log('Scanner stop note:', err.message);
-                    // Scanner might not be running, that's okay
-                    this.html5QrcodeScanner = null;
-                }
+            // Stop frame grabbing
+            if (this.frameGrabbingInterval) {
+                clearInterval(this.frameGrabbingInterval);
+                this.frameGrabbingInterval = null;
+                console.log('Frame grabbing stopped');
             }
 
             // Stop camera stream
@@ -791,16 +841,13 @@ class InventoryApp {
         try {
             this.showAlert('🔄 Restarting scanner...', 'info');
 
-            // Stop current scanner
-            if (this.html5QrcodeScanner) {
-                try {
-                    await this.html5QrcodeScanner.stop();
-                } catch (err) {
-                    console.error('Error stopping scanner:', err);
-                }
-            }
+            // Stop current scanner and stream
+            await this.stopScanning();
 
-            // Start fresh
+            // Wait a moment then start fresh
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Start scanner again
             await this.startScanning();
         } catch (err) {
             console.error('Retry error:', err);
