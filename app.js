@@ -199,13 +199,15 @@ class InventoryApp {
             const apiUrl = `${serverUrl}/api/download`;
             console.log(`Fetching parts from: ${apiUrl}`);
 
+            // Try with CORS enabled (works across networks/WiFi)
             const response = await fetch(apiUrl, {
                 method: 'GET',
                 headers: {
                     'Accept': 'text/csv',
                     'Content-Type': 'text/csv'
                 },
-                mode: 'cors'
+                mode: 'cors',
+                credentials: 'omit'  // Don't send cookies, works across networks
             });
 
             console.log(`Response status: ${response.status}`);
@@ -291,7 +293,28 @@ class InventoryApp {
             });
         } catch (error) {
             console.error('Fetch Error:', error);
-            this.showAlert(`✗ Error: ${error.message}\n\nTo use admin server:\n1. Go to: https://web-production-85db8e.up.railway.app\n2. Upload your Excel or CSV file\n3. Then click "Fetch from Admin Server" again\n\nOr use "Manual Entry" option below`, 'error');
+            let errorMsg = `✗ Error connecting to admin server\n\n`;
+
+            if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
+                errorMsg += `Network Issue Detected:\n`;
+                errorMsg += `✓ Check admin server is running\n`;
+                errorMsg += `✓ Works on different WiFi networks & mobile data\n`;
+                errorMsg += `✓ Admin server URL: https://web-production-85db8e.up.railway.app\n\n`;
+                errorMsg += `Steps:\n`;
+                errorMsg += `1. Visit admin server URL\n`;
+                errorMsg += `2. Upload CSV/Excel file\n`;
+                errorMsg += `3. Click "Fetch from Admin Server" again\n\n`;
+                errorMsg += `Or use "Upload Excel/CSV File" option below`;
+            } else {
+                errorMsg += `${error.message}\n\n`;
+                errorMsg += `To fix:\n`;
+                errorMsg += `1. Go to admin server\n`;
+                errorMsg += `2. Upload your Excel or CSV file\n`;
+                errorMsg += `3. Click "Fetch from Admin Server" again\n\n`;
+                errorMsg += `Or manually upload file using "Upload Excel/CSV File" option`;
+            }
+
+            this.showAlert(errorMsg, 'error');
         }
     }
 
@@ -641,6 +664,7 @@ class InventoryApp {
         `;
 
         let currentRotation = 0;
+        let retryLookupBtn = null;
 
         const closeModal = () => {
             modal.remove();
@@ -652,7 +676,26 @@ class InventoryApp {
             imgElement.style.transform = `rotate(${currentRotation}deg)`;
             console.log('Image rotated:', currentRotation, 'degrees');
 
-            // Retry barcode detection after rotation
+            // Show "Retry Lookup" button after rotation
+            if (!retryLookupBtn) {
+                const btnContainer = document.querySelector('[style*="display: flex"][style*="gap: 8px"][style*="flex-wrap"]');
+                if (btnContainer) {
+                    retryLookupBtn = document.createElement('button');
+                    retryLookupBtn.id = 'retry-lookup-btn';
+                    retryLookupBtn.textContent = '🔍 Retry Lookup';
+                    retryLookupBtn.style.cssText = `
+                        flex: 1; min-width: 120px; padding: 12px;
+                        background: #e67e22; color: white; border: none;
+                        border-radius: 5px; cursor: pointer; font-weight: 600;
+                    `;
+                    retryLookupBtn.onclick = () => {
+                        this.detectBarcodeFromImage(imageData, currentRotation);
+                    };
+                    btnContainer.insertBefore(retryLookupBtn, btnContainer.firstChild);
+                }
+            }
+
+            // Auto-retry barcode detection after rotation
             setTimeout(() => {
                 this.detectBarcodeFromImage(imageData, currentRotation);
             }, 300);
@@ -792,8 +835,8 @@ class InventoryApp {
                     codeInput.value = selected.value;
                     trimDialog.remove();
 
-                    // Show 30-second countdown before proceeding
-                    let countdown = 30;
+                    // Show 10-second countdown before proceeding
+                    let countdown = 10;
                     const countdownDiv = document.createElement('div');
                     countdownDiv.style.cssText = `
                         position: fixed; top: 20px; right: 20px;
@@ -807,7 +850,7 @@ class InventoryApp {
                     const countdownInterval = setInterval(() => {
                         countdown--;
                         if (countdown > 0) {
-                            countdownDiv.textContent = `Auto-lookup in ${countdown}s... Edit part # above`;
+                            countdownDiv.textContent = `Auto-lookup in ${countdown}s... Edit or rotate image`;
                         } else {
                             clearInterval(countdownInterval);
                             countdownDiv.remove();
