@@ -791,8 +791,37 @@ class InventoryApp {
                 if (selected) {
                     codeInput.value = selected.value;
                     trimDialog.remove();
-                    // Auto-perform lookup after trim
-                    setTimeout(() => handleUseCode(), 100);
+
+                    // Show 30-second countdown before proceeding
+                    let countdown = 30;
+                    const countdownDiv = document.createElement('div');
+                    countdownDiv.style.cssText = `
+                        position: fixed; top: 20px; right: 20px;
+                        background: #3498db; color: white; padding: 15px 20px;
+                        border-radius: 8px; font-weight: bold; font-size: 16px;
+                        z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                    `;
+                    countdownDiv.textContent = `Auto-lookup in ${countdown}s... Edit part # above`;
+                    document.body.appendChild(countdownDiv);
+
+                    const countdownInterval = setInterval(() => {
+                        countdown--;
+                        if (countdown > 0) {
+                            countdownDiv.textContent = `Auto-lookup in ${countdown}s... Edit part # above`;
+                        } else {
+                            clearInterval(countdownInterval);
+                            countdownDiv.remove();
+                            handleUseCode();
+                        }
+                    }, 1000);
+
+                    // Allow user to click "Use Code" button to skip waiting
+                    const originalUseCodeHandler = document.getElementById('use-code-btn').onclick;
+                    document.getElementById('use-code-btn').onclick = () => {
+                        clearInterval(countdownInterval);
+                        countdownDiv.remove();
+                        handleUseCode();
+                    };
                 }
             };
 
@@ -1038,8 +1067,12 @@ class InventoryApp {
             `;
             resultDiv.style.display = 'block';
 
+            // Set readonly for found parts (user shouldn't edit)
+            const partNameField = document.getElementById('part-name');
+            partNameField.setAttribute('readonly', 'readonly');
+            partNameField.value = partName;
+
             document.getElementById('part-number').value = partNumber;
-            document.getElementById('part-name').value = partName;
             document.getElementById('physical-count').value = '';
             document.getElementById('location').value = '';
             document.getElementById('remarks').value = '';
@@ -1069,6 +1102,7 @@ class InventoryApp {
     addNewPartManually(partNumber) {
         const form = document.getElementById('scan-form');
         const resultDiv = document.getElementById('scan-result');
+        const partNameField = document.getElementById('part-name');
 
         resultDiv.innerHTML = `
             <div class="scan-result" style="background: #d1ecf1; border-left-color: #17a2b8;">
@@ -1077,15 +1111,19 @@ class InventoryApp {
         `;
 
         document.getElementById('part-number').value = partNumber;
-        document.getElementById('part-name').value = '';  // User must enter part name
+
+        // IMPORTANT: Remove readonly so user can enter part name
+        partNameField.removeAttribute('readonly');
+        partNameField.value = '';  // Clear field for user input
+
         document.getElementById('physical-count').value = '';
         document.getElementById('location').value = '';
         document.getElementById('remarks').value = 'Part Not in System Data';  // Auto-populate remarks
 
         form.style.display = 'block';
-        document.getElementById('part-name').focus();  // Focus on part name since it's required
+        partNameField.focus();  // Focus on part name since it's required
 
-        this.showAlert('📝 Enter part name and other details to add this new part', 'info');
+        this.showAlert('📝 Enter Part Name (required) and other details to add this new part', 'info');
     }
 
     // Save record
