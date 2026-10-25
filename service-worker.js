@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inventory-v1';
+const CACHE_NAME = 'inventory-v2';
 const ASSETS_TO_CACHE = [
     '/',
     '/index.html',
@@ -37,7 +37,7 @@ self.addEventListener('activate', event => {
     );
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - network first (so updates show up), fall back to cache when offline
 self.addEventListener('fetch', event => {
     // Skip cross-origin requests
     if (!event.request.url.startsWith(self.location.origin) &&
@@ -46,36 +46,22 @@ self.addEventListener('fetch', event => {
     }
 
     event.respondWith(
-        caches.match(event.request)
+        fetch(event.request)
             .then(response => {
-                // Return cached version if available
-                if (response) {
-                    return response;
+                // Keep a copy of successful responses for offline use
+                if (response && response.status === 200) {
+                    const responseToCache = response.clone();
+                    caches.open(CACHE_NAME)
+                        .then(cache => cache.put(event.request, responseToCache));
                 }
-
-                // Otherwise try network
-                return fetch(event.request)
-                    .then(response => {
-                        // Cache successful responses
-                        if (response && response.status === 200) {
-                            const responseToCache = response.clone();
-                            caches.open(CACHE_NAME)
-                                .then(cache => {
-                                    cache.put(event.request, responseToCache);
-                                });
-                        }
-                        return response;
-                    })
-                    .catch(() => {
-                        // Return offline page if available, otherwise fail gracefully
-                        return new Response('Offline - using cached data', {
-                            status: 503,
-                            statusText: 'Service Unavailable',
-                            headers: new Headers({
-                                'Content-Type': 'text/plain'
-                            })
-                        });
-                    });
+                return response;
             })
+            .catch(() => caches.match(event.request).then(cached => cached ||
+                new Response('Offline - no cached copy available', {
+                    status: 503,
+                    statusText: 'Service Unavailable',
+                    headers: new Headers({ 'Content-Type': 'text/plain' })
+                })
+            ))
     );
 });
