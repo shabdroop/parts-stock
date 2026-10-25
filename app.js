@@ -18,6 +18,7 @@ class InventoryApp {
 
     async init() {
         await this.initDatabase();
+        await this.loadPartsFromDatabase();
         this.setupEventListeners();
         this.registerServiceWorker();
         this.updateStats();
@@ -304,6 +305,7 @@ class InventoryApp {
     // Save parts to database (optimized for large datasets)
     async saveParts(parts) {
         console.log(`Starting to save ${parts.length} parts to database...`);
+        this.partsDatabase = {}; // Drop previous list so removed parts don't linger in suggestions
 
         return new Promise(async (resolve, reject) => {
             try {
@@ -1065,6 +1067,61 @@ class InventoryApp {
         const partNumber = barcode.trim();
         document.getElementById('manual-part-number').value = partNumber;
         await this.lookupPart();
+    }
+
+    // Live suggestions while typing: matches part number (prefix first) or part name
+    filterParts(query) {
+        const list = document.getElementById('part-suggestions');
+        const q = query.trim().toLowerCase();
+
+        if (!q) {
+            list.style.display = 'none';
+            list.innerHTML = '';
+            return;
+        }
+
+        const prefix = [];
+        const contains = [];
+        for (const [partNumber, partName] of Object.entries(this.partsDatabase)) {
+            const num = partNumber.toLowerCase();
+            if (num.startsWith(q)) {
+                prefix.push([partNumber, partName]);
+            } else if (num.includes(q) || partName.toLowerCase().includes(q)) {
+                contains.push([partNumber, partName]);
+            }
+        }
+
+        const matches = prefix.concat(contains);
+        const shown = matches.slice(0, 50);
+
+        if (shown.length === 0) {
+            list.innerHTML = '<div style="padding: 10px; color: #7f8c8d; font-size: 13px;">No matching parts</div>';
+            list.style.display = 'block';
+            return;
+        }
+
+        const esc = (s) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        list.innerHTML = shown.map(([partNumber, partName]) => `
+            <div class="part-suggestion" data-part="${esc(partNumber)}"
+                 style="padding: 10px; border-bottom: 1px solid #ecf0f1; cursor: pointer;">
+                <strong>${esc(partNumber)}</strong><br>
+                <small style="color: #7f8c8d;">${esc(partName)}</small>
+            </div>
+        `).join('') + (matches.length > shown.length
+            ? `<div style="padding: 8px; font-size: 12px; color: #7f8c8d;">Showing ${shown.length} of ${matches.length} matches. Type more to narrow down.</div>`
+            : '');
+        list.style.display = 'block';
+
+        list.querySelectorAll('.part-suggestion').forEach(el => {
+            el.addEventListener('click', () => this.selectSuggestion(el.dataset.part));
+        });
+    }
+
+    // Fill the part number from a suggestion and look it up
+    selectSuggestion(partNumber) {
+        document.getElementById('manual-part-number').value = partNumber;
+        document.getElementById('part-suggestions').style.display = 'none';
+        this.lookupPart();
     }
 
     // Manual part lookup

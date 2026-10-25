@@ -494,7 +494,8 @@
 
                 <div class="form-group">
                     <label>Part Number *</label>
-                    <input type="text" id="manual-part-number" placeholder="e.g., SKU-001">
+                    <input type="text" id="manual-part-number" placeholder="Type part number or name" autocomplete="off" oninput="app.filterParts(this.value)">
+                    <div id="part-suggestions" style="display: none; max-height: 260px; overflow-y: auto; margin-top: 6px; border: 1px solid #bdc3c7; border-radius: 6px; background: white;"></div>
                     <button type="button" class="btn-primary" style="width: 100%; margin-top: 8px;" onclick="app.lookupPart()">
                         🔍 Lookup Part
                     </button>
