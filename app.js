@@ -1,3 +1,6 @@
+// Parts list published in this repo (data/parts.csv)
+const PARTS_CSV_URL = 'https://raw.githubusercontent.com/shabdroop/parts-stock/master/data/parts.csv';
+
 class InventoryApp {
     constructor() {
         this.db = null;
@@ -193,18 +196,15 @@ class InventoryApp {
         }
     }
 
-    // Fetch CSV from backend server
-    async fetchCSVFromServer(serverUrl) {
+    // Fetch parts CSV from a published URL (GitHub raw file)
+    async fetchCSVFromServer(csvUrl) {
         try {
-            const apiUrl = `${serverUrl}/api/download`;
-            console.log(`Fetching parts from: ${apiUrl}`);
+            console.log(`Fetching parts from: ${csvUrl}`);
 
-            // Try with CORS enabled (works across networks/WiFi)
-            const response = await fetch(apiUrl, {
+            const response = await fetch(csvUrl, {
                 method: 'GET',
                 headers: {
-                    'Accept': 'text/csv',
-                    'Content-Type': 'text/csv'
+                    'Accept': 'text/csv'
                 },
                 mode: 'cors',
                 credentials: 'omit'  // Don't send cookies, works across networks
@@ -220,7 +220,7 @@ class InventoryApp {
                 } catch (e) {
                     errorText = 'Unable to read error';
                 }
-                throw new Error(`Server error: ${response.status} - ${errorText || 'File not found. Upload a CSV or Excel file to admin server first.'}`);
+                throw new Error(`Server error: ${response.status} - ${errorText || 'Parts file not found'}`);
             }
 
             const csvText = await response.text();
@@ -236,7 +236,7 @@ class InventoryApp {
             Papa.parse(csvText, {
                 header: true,
                 skipEmptyLines: true,
-                dynamicTyping: true, // Preserve number formats
+                dynamicTyping: false, // Keep part numbers as text (leading zeros, scanned codes are strings)
                 complete: async (results) => {
                     try {
                         console.log(`Parsed ${results.data.length} rows from CSV`);
@@ -293,26 +293,9 @@ class InventoryApp {
             });
         } catch (error) {
             console.error('Fetch Error:', error);
-            let errorMsg = `✗ Error connecting to admin server\n\n`;
-
-            if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
-                errorMsg += `Network Issue Detected:\n`;
-                errorMsg += `✓ Check admin server is running\n`;
-                errorMsg += `✓ Works on different WiFi networks & mobile data\n`;
-                errorMsg += `✓ Admin server URL: https://web-production-85db8e.up.railway.app\n\n`;
-                errorMsg += `Steps:\n`;
-                errorMsg += `1. Visit admin server URL\n`;
-                errorMsg += `2. Upload CSV/Excel file\n`;
-                errorMsg += `3. Click "Fetch from Admin Server" again\n\n`;
-                errorMsg += `Or use "Upload Excel/CSV File" option below`;
-            } else {
-                errorMsg += `${error.message}\n\n`;
-                errorMsg += `To fix:\n`;
-                errorMsg += `1. Go to admin server\n`;
-                errorMsg += `2. Upload your Excel or CSV file\n`;
-                errorMsg += `3. Click "Fetch from Admin Server" again\n\n`;
-                errorMsg += `Or manually upload file using "Upload Excel/CSV File" option`;
-            }
+            let errorMsg = `✗ Could not load parts list\n\n${error.message}\n\n`;
+            errorMsg += `Check your internet connection and click "Fetch Parts List" again.\n`;
+            errorMsg += `Or use "Upload Excel/CSV File" option below`;
 
             this.showAlert(errorMsg, 'error');
         }

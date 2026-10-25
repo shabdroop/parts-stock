@@ -557,21 +557,16 @@
 
                 <div style="margin-bottom: 16px;">
                     <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #2c3e50;">
-                        Option A: Fetch from Cloud Server (Recommended)
+                        Option A: Fetch Parts List (Recommended)
                     </div>
                     <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 8px;">
-                        Steps:<br>
-                        1️⃣ Upload CSV to admin server (click link below)<br>
-                        2️⃣ Click "Fetch from Admin Server" button
+                        Downloads the latest parts list published on GitHub
                     </p>
-                    <button class="btn-secondary" style="width: 100%; margin-bottom: 8px;" onclick="window.open('https://web-production-85db8e.up.railway.app', '_blank')">
-                        🔧 Open Admin Server
+                    <button class="btn-success" style="width: 100%;" onclick="app.fetchCSVFromServer(PARTS_CSV_URL)">
+                        🔄 Fetch Parts List
                     </button>
-                    <button class="btn-success" style="width: 100%;" onclick="app.fetchCSVFromServer('https://web-production-85db8e.up.railway.app')">
-                        🔄 Fetch from Admin Server
-                    </button>
-                    <p style="font-size: 11px; color: #95a5a6; margin-top: 8px;">
-                        Server: https://web-production-85db8e.up.railway.app
+                    <p style="font-size: 11px; color: #95a5a6; margin-top: 8px; word-break: break-all;">
+                        Source: https://raw.githubusercontent.com/shabdroop/parts-stock/master/data/parts.csv
                     </p>
                 </div>
 
